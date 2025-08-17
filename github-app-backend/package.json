@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "npx tsc src/index.ts src/controllers/issueGeneratorController.ts src/controllers/issueCommentController.ts src/controllers/prCommentController.ts --outDir dist --target es2020 --module nodenext --moduleResolution nodenext --esModuleInterop true --allowSyntheticDefaultImports true --skipLibCheck true --declaration true && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "dev:build": "tsc --watch",

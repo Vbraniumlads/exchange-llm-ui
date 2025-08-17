@@ -1,0 +1,36 @@
+import { Router, Request, Response } from 'express';
+import { dispatchWorkflow } from '../services/githubAppAuthService.js';
+
+export const workflowDispatchRouter = Router();
+
+/**
+ * POST /api/workflows/dispatch
+ * Body: { owner, repo, workflowId, ref?, inputs? }
+ * Requires GitHub App to be installed on target repo. Server uses app installation token.
+ */
+workflowDispatchRouter.post('/dispatch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { owner, repo, workflowId, ref, inputs } = req.body || {};
+
+    if (!owner || !repo || !workflowId) {
+      res.status(400).json({ error: 'Missing required fields: owner, repo, workflowId' });
+      return;
+    }
+
+    await dispatchWorkflow({ owner, repo, workflowId, ref, inputs });
+    res.status(202).json({ success: true, message: 'Workflow dispatch requested' });
+  } catch (error: any) {
+    const message = error?.message || 'Unknown error';
+    if (message.includes('404') || message.includes('Not Found')) {
+      res.status(404).json({ error: 'Installation not found. Ensure the GitHub App is installed on the repository.' });
+      return;
+    }
+    if (message.includes('Missing GitHub App configuration')) {
+      res.status(500).json({ error: message });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to dispatch workflow', message });
+  }
+});
+
+
