@@ -10,6 +10,10 @@ on:
         options:
           - create-pr
         default: "create-pr"
+      context:
+        description: "Additional context or prompt for the run"
+        required: true
+        type: string
 
 jobs:
   analyze:
