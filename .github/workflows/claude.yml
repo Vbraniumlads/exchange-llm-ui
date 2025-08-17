@@ -35,6 +35,6 @@ jobs:
         with:
           mode: agent
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          custom_instructions: ${{ github.event.inputs.context }}
+          direct_prompt: "Create a pull request for the following issue: ${{ github.event.inputs.context }}"
           claude_env: |
             ACTION_TYPE: ${{ github.event.inputs.action_type }}
