@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { dispatchWorkflow } from '../services/githubAppAuthService.js';
+import { dispatchWorkflow, isAppInstalledForRepo } from '../services/githubAppAuthService.js';
 
 export const workflowDispatchRouter = Router();
 
@@ -30,6 +30,29 @@ workflowDispatchRouter.post('/dispatch', async (req: Request, res: Response): Pr
       return;
     }
     res.status(500).json({ error: 'Failed to dispatch workflow', message });
+  }
+});
+
+/**
+ * GET /api/workflows/installation-status/:owner/:repo
+ * Returns: { installed: boolean, installationId?: number }
+ */
+workflowDispatchRouter.get('/installation-status/:owner/:repo', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { owner, repo } = req.params;
+    if (!owner || !repo) {
+      res.status(400).json({ error: 'Missing owner or repo' });
+      return;
+    }
+    const result = await isAppInstalledForRepo(owner, repo);
+    res.json(result);
+  } catch (error: any) {
+    const message = error?.message || 'Unknown error';
+    if (message.includes('Missing GitHub App configuration')) {
+      res.status(500).json({ error: message });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to check installation', message });
   }
 });
 

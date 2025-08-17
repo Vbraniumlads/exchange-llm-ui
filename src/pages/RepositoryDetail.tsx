@@ -27,6 +27,7 @@ export default function RepositoryDetail() {
   const [pullRequests, setPullRequests] = useState<GitHubPullRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [appInstalled, setAppInstalled] = useState<boolean | null>(null);
   
   const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const [newIssue, setNewIssue] = useState({
@@ -47,19 +48,25 @@ export default function RepositoryDetail() {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!owner || !repo || !isAuthenticated) return;
+      if (!owner || !repo) return;
       
       setIsLoading(true);
       try {
-        const [repoData, issuesData, prsData] = await Promise.all([
-          githubService.getRepository(owner, repo),
-          githubService.getRepositoryIssues(owner, repo),
-          githubService.getRepositoryPullRequests(owner, repo)
-        ]);
+        const installation = await githubService.getAppInstallationStatus(owner, repo);
+        setAppInstalled(installation.installed);
+        const promises: Promise<any>[] = [];
+        if (isAuthenticated) {
+          promises.push(
+            githubService.getRepository(owner, repo),
+            githubService.getRepositoryIssues(owner, repo),
+            githubService.getRepositoryPullRequests(owner, repo)
+          );
+        }
+        const [repoData, issuesData, prsData] = promises.length ? await Promise.all(promises) : [null, [], []];
         
-        setRepository(repoData);
-        setIssues(issuesData);
-        setPullRequests(prsData);
+        if (repoData) setRepository(repoData);
+        if (issuesData) setIssues(issuesData);
+        if (prsData) setPullRequests(prsData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load repository data');
         toast.error('Failed to load repository data');
@@ -327,26 +334,36 @@ export default function RepositoryDetail() {
             <h1 className="text-xl sm:text-3xl font-bold text-foreground truncate">
               {owner}/{repo}
             </h1>
+            {/* Left-side status removed to move indicator to top-right */}
             {repository.description && (
               <p className="text-sm sm:text-base text-muted-foreground mt-1 truncate">{repository.description}</p>
             )}
           </div>
-          <Button
-            variant="outline"
-            onClick={() => {
-              const appSlug = (import.meta as any).env?.VITE_GITHUB_APP_SLUG as string | undefined;
-              if (!appSlug) {
-                toast.error('GitHub App slug not configured');
-                return;
-              }
-              const url = `https://github.com/apps/${appSlug}/installations/new`;
-              window.open(url, '_blank');
-            }}
-            className="hidden sm:flex flex-shrink-0 ml-auto"
-          >
-            <Plug className="w-4 h-4 mr-2" />
-            Connect GitHub App
-          </Button>
+          {appInstalled === false ? (
+            <Button
+              variant="default"
+              onClick={() => {
+                const appSlug = (import.meta as any).env?.VITE_GITHUB_APP_SLUG as string | undefined;
+                if (!appSlug) {
+                  toast.error('GitHub App slug not configured');
+                  return;
+                }
+                const url = `https://github.com/apps/${appSlug}/installations/new`;
+                window.open(url, '_blank');
+              }}
+              className="flex flex-shrink-0 ml-auto bg-cta-600 hover:bg-cta-700 text-white"
+            >
+              <Plug className="w-4 h-4 mr-2" />
+              Connect GitHub App
+            </Button>
+          ) : appInstalled === true ? (
+            <div className="flex flex-shrink-0 ml-auto">
+              <span className="inline-flex items-center rounded-sm bg-status-success/20 text-status-success px-2 py-1 text-xs border border-status-success/40">
+                <Plug className="w-3 h-3 mr-1" />
+                App Connected
+              </span>
+            </div>
+          ) : null}
           <Button
             variant="outline"
             onClick={() => {
@@ -360,7 +377,7 @@ export default function RepositoryDetail() {
                 toast.error('Could not determine GitHub URL');
               }
             }}
-            className="hidden sm:flex flex-shrink-0 ml-2"
+            className={`flex flex-shrink-0 ${appInstalled === null ? 'ml-auto' : 'ml-2'}`}
           >
             <ExternalLink className="w-4 h-4 mr-2" />
             View on GitHub

@@ -108,6 +108,10 @@ export class GitHubService {
       { owner, repo, workflowId, ref, inputs }
     );
   }
+
+  async getAppInstallationStatus(owner: string, repo: string): Promise<{ installed: boolean; installationId?: number }> {
+    return apiClient.get<{ installed: boolean; installationId?: number }>(`/workflows/installation-status/${owner}/${repo}`);
+  }
 }
 
 export const githubService = new GitHubService();

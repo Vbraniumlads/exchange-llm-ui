@@ -84,4 +84,22 @@ export async function dispatchWorkflow(params: WorkflowDispatchParams): Promise<
   );
 }
 
+export async function isAppInstalledForRepo(
+  owner: string,
+  repo: string
+): Promise<{ installed: boolean; installationId?: number }> {
+  try {
+    const { appId, privateKey } = ensureAppConfig();
+    const appJwt = createAppJwt(appId, privateKey);
+    const installationId = await getInstallationIdForRepo(owner, repo, appJwt);
+    return { installed: true, installationId };
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      return { installed: false };
+    }
+    const message = error?.message || 'Unknown error';
+    throw new Error(`Failed to check installation: ${message}`);
+  }
+}
+
 
