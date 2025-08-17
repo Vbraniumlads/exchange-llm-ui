@@ -16,7 +16,7 @@ on:
         type: string
 
 jobs:
-  analyze:
+  agent:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -35,4 +35,6 @@ jobs:
         with:
           mode: agent
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          assignee_trigger: "github-actions[bot]"
+          direct_prompt: ${{ github.event.inputs.context }}
+          claude_env: |
+            ACTION_TYPE: ${{ github.event.inputs.action_type }}
