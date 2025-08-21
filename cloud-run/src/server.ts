@@ -271,7 +271,7 @@ app.post('/run', async (req: Request<{}, {}, RunRequest>, res: Response): Promis
 
     const improved_task_prompt = `
     You are a senior software engineer. You are given a task to improve the code in the repository.
-    Create a pull request with the changes.
+    Create and Open a pull request with the changes.
     Task: ${task_prompt}
     `
 
