@@ -1,0 +1,55 @@
+steps:
+  # Create Artifact Registry repository if it doesn't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud artifacts repositories create cloud-run-source-deploy \
+          --repository-format=docker \
+          --location=us-central1 \
+          --description="Docker repository for Cloud Run deployments" \
+          2>/dev/null || echo "Repository already exists, continuing..."
+
+  # Build the container image for linux/amd64
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '--platform', 'linux/amd64', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/claude-code-runner:$COMMIT_SHA', '.']
+    dir: 'cloud-run'
+
+  # Push the container image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/claude-code-runner:$COMMIT_SHA']
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'claude-code-runner'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/claude-code-runner:$COMMIT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '3600'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'GITHUB_APP_ID=${_GITHUB_APP_ID}'
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/claude-code-runner:$COMMIT_SHA'
+
+substitutions:
+  _GITHUB_APP_ID: '1734153' # Replace with your GitHub App ID
+
+options:
+  logging: CLOUD_LOGGING_ONLY

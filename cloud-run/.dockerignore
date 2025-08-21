@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.env.*
+deploy.sh
+deploy-simple.sh
+build-local.sh
+cloudbuild.yaml
+*.md
+.DS_Store
+test-request.json
+test-request.example.json
+example-config.json
+client-package.json

@@ -17,8 +17,18 @@ workflowDispatchRouter.post('/dispatch', async (req: Request, res: Response): Pr
       return;
     }
 
-    await dispatchWorkflow({ owner, repo, workflowId, ref, inputs });
-    res.status(202).json({ success: true, message: 'Workflow dispatch requested' });
+    const result = await dispatchWorkflow({ owner, repo, workflowId, ref, inputs });
+
+    // If Cloud Run was used and returned a response, include it
+    if (result && 'success' in result) {
+      res.status(202).json({
+        success: true,
+        message: 'Claude Code executed via Cloud Run',
+        cloudRunResponse: result
+      });
+    } else {
+      res.status(202).json({ success: true, message: 'Workflow dispatch requested' });
+    }
   } catch (error: any) {
     const message = error?.message || 'Unknown error';
     if (message.includes('404') || message.includes('Not Found')) {

@@ -9,6 +9,16 @@ export interface WorkflowDispatchParams {
   inputs?: Record<string, any>;
 }
 
+export interface CloudRunResponse {
+  success: boolean;
+  pull_request_url?: string;
+  pull_request_number?: number;
+  branch_name?: string;
+  claude_output?: string;
+  execution_time_ms?: number;
+  message?: string;
+}
+
 function ensureAppConfig(): { appId: number; privateKey: string } {
   const appIdRaw = process.env.GITHUB_APP_ID;
   const privateKey = process.env.GITHUB_APP_PRIVATE_KEY || '';
@@ -64,24 +74,63 @@ async function createInstallationAccessToken(installationId: number, jwtToken: s
   return data.token as string;
 }
 
-export async function dispatchWorkflow(params: WorkflowDispatchParams): Promise<void> {
+export async function dispatchWorkflow(params: WorkflowDispatchParams): Promise<CloudRunResponse> {
   const { owner, repo, workflowId, ref = 'main', inputs = {} } = params;
+
+  // Only handle Claude workflows
+  if (workflowId !== 'claude.yml' || !inputs.context) {
+    throw new Error('Only Claude workflows are supported. Please use claude.yml with a context input.');
+  }
+
+  // Get configuration from environment variables
+  const cloudRunUrl = process.env.CLAUDE_CLOUD_RUN_URL;
+  const claudeOAuthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+
+  if (!cloudRunUrl) {
+    throw new Error('CLAUDE_CLOUD_RUN_URL environment variable not set');
+  }
+
+  if (!claudeOAuthToken) {
+    throw new Error('CLAUDE_CODE_OAUTH_TOKEN environment variable not set');
+  }
+
   const { appId, privateKey } = ensureAppConfig();
   const appJwt = createAppJwt(appId, privateKey);
   const installationId = await getInstallationIdForRepo(owner, repo, appJwt);
-  const installationToken = await createInstallationAccessToken(installationId, appJwt);
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(workflowId)}/dispatches`;
-  await axios.post(
-    url,
-    { ref, inputs },
-    {
-      headers: {
-        Authorization: `token ${installationToken}`,
-        Accept: 'application/vnd.github+json',
+  // Call Cloud Run service
+  const repositoryUrl = `https://github.com/${owner}/${repo}`;
+
+  try {
+    const response = await axios.post(
+      `${cloudRunUrl}/run`,
+      {
+        repository_url: repositoryUrl,
+        task_prompt: inputs.context,
+        claude_oauth_token: claudeOAuthToken,
+        github_app_private_key: privateKey,
+        installation_id: installationId,
+        base_branch: ref
       },
+      {
+        timeout: 3600000, // 1 hour timeout
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log(`✅ Claude Code Cloud Run service completed successfully`);
+    if (response.data.pull_request_url) {
+      console.log(`   PR created: ${response.data.pull_request_url}`);
     }
-  );
+
+    return response.data as CloudRunResponse;
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.error || error.message;
+    console.error(`❌ Claude Code Cloud Run service failed: ${errorMessage}`);
+    throw new Error(`Failed to run Claude Code: ${errorMessage}`);
+  }
 }
 
 export async function isAppInstalledForRepo(

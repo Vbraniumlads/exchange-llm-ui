@@ -23,7 +23,19 @@
       "Bash(kill:*)",
       "Bash(grep:*)",
       "Bash(npm run preview:*)",
-      "Bash(PORT=3000 npm run preview)"
+      "Bash(PORT=3000 npm run preview)",
+      "WebFetch(domain:github.com)",
+      "Bash(npx tsc:*)",
+      "Bash(chmod:*)",
+      "Bash(./deploy.sh)",
+      "WebSearch",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(gcloud run services logs read:*)",
+      "Bash(gcloud logging read:*)",
+      "Bash(/usr/local/bin/gcloud run services logs read claude-code-runner --limit=30 --region=us-central1)",
+      "Bash(gcloud run services update:*)",
+      "Bash(source:*)",
+      "Bash(GITHUB_APP_ID=1734153 ./deploy.sh)"
     ],
     "deny": []
   }
