@@ -13,5 +13,4 @@ cloudbuild.yaml
 .DS_Store
 test-request.json
 test-request.example.json
-example-config.json
 client-package.json
