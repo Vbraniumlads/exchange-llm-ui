@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, GitBranch, GitPullRequest, AlertCircle, Plus, ExternalLink, Calendar, User, GitCommit, MessageSquare, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, GitBranch, GitPullRequest, AlertCircle, Plus, ExternalLink, Calendar, User, GitCommit, MessageSquare, FileText, ChevronDown, ChevronRight, Play, Plug } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -14,16 +14,20 @@ import { Label } from '../components/ui/label';
 import { githubService } from '../features/github/services/github.service';
 import type { GitHubRepository, GitHubIssue, GitHubPullRequest, GitHubComment } from '../features/github/types/github.types';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
+import { GitHubLoginButton } from '../features/auth/components/GitHubLoginButton';
 
 export default function RepositoryDetail() {
   const { owner, repo } = useParams<Record<string, string | undefined>>();
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   
   const [repository, setRepository] = useState<GitHubRepository | null>(null);
   const [issues, setIssues] = useState<GitHubIssue[]>([]);
   const [pullRequests, setPullRequests] = useState<GitHubPullRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [appInstalled, setAppInstalled] = useState<boolean | null>(null);
   
   const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const [newIssue, setNewIssue] = useState({
@@ -32,6 +36,7 @@ export default function RepositoryDetail() {
     labels: ''
   });
   const [isCreatingIssue, setIsCreatingIssue] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
 
   // Comments state
   const [expandedIssues, setExpandedIssues] = useState<Set<number>>(new Set());
@@ -39,6 +44,7 @@ export default function RepositoryDetail() {
   const [issueComments, setIssueComments] = useState<Record<number, GitHubComment[]>>({});
   const [prComments, setPrComments] = useState<Record<number, GitHubComment[]>>({});
   const [loadingComments, setLoadingComments] = useState<Set<number>>(new Set());
+  const [dispatchingIssues, setDispatchingIssues] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const fetchData = async () => {
@@ -46,15 +52,21 @@ export default function RepositoryDetail() {
       
       setIsLoading(true);
       try {
-        const [repoData, issuesData, prsData] = await Promise.all([
-          githubService.getRepository(owner, repo),
-          githubService.getRepositoryIssues(owner, repo),
-          githubService.getRepositoryPullRequests(owner, repo)
-        ]);
+        const installation = await githubService.getAppInstallationStatus(owner, repo);
+        setAppInstalled(installation.installed);
+        const promises: Promise<any>[] = [];
+        if (isAuthenticated) {
+          promises.push(
+            githubService.getRepository(owner, repo),
+            githubService.getRepositoryIssues(owner, repo),
+            githubService.getRepositoryPullRequests(owner, repo)
+          );
+        }
+        const [repoData, issuesData, prsData] = promises.length ? await Promise.all(promises) : [null, [], []];
         
-        setRepository(repoData);
-        setIssues(issuesData);
-        setPullRequests(prsData);
+        if (repoData) setRepository(repoData);
+        if (issuesData) setIssues(issuesData);
+        if (prsData) setPullRequests(prsData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load repository data');
         toast.error('Failed to load repository data');
@@ -64,7 +76,7 @@ export default function RepositoryDetail() {
     };
 
     fetchData();
-  }, [owner, repo]);
+  }, [owner, repo, isAuthenticated]);
 
   const toggleIssueComments = async (issueNumber: number) => {
     if (expandedIssues.has(issueNumber)) {
@@ -93,6 +105,27 @@ export default function RepositoryDetail() {
           return newSet;
         });
       }
+    }
+  };
+
+  const handleRunWorkflowForIssue = async (issueNumber: number) => {
+    if (!owner || !repo) return;
+    setDispatchingIssues(prev => new Set(prev).add(issueNumber));
+    try {
+      await githubService.dispatchWorkflow(owner, repo, 'claude.yml', {
+        action_type: 'create-pr',
+        context: issues.find(i => i.number === issueNumber)?.body || '',
+      });
+      toast.success(`Workflow dispatched for issue #${issueNumber}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to dispatch workflow';
+      toast.error(message);
+    } finally {
+      setDispatchingIssues(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(issueNumber);
+        return newSet;
+      });
     }
   };
 
@@ -234,7 +267,7 @@ export default function RepositoryDetail() {
     }
   };
 
-  if (isLoading) {
+  if (isAuthLoading || isLoading) {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-6xl mx-auto">
@@ -243,6 +276,26 @@ export default function RepositoryDetail() {
             <div className="h-32 bg-muted/50 rounded"></div>
             <div className="h-64 bg-muted/50 rounded"></div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-2xl mx-auto">
+          <Card className="bg-transparent border border-border">
+            <CardHeader>
+              <CardTitle className="text-foreground">Sign in to view repository details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">Connect your GitHub account to load issues and pull requests for this repository.</p>
+              <div className="w-64">
+                <GitHubLoginButton />
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -281,14 +334,50 @@ export default function RepositoryDetail() {
             <h1 className="text-xl sm:text-3xl font-bold text-foreground truncate">
               {owner}/{repo}
             </h1>
+            {/* Left-side status removed to move indicator to top-right */}
             {repository.description && (
               <p className="text-sm sm:text-base text-muted-foreground mt-1 truncate">{repository.description}</p>
             )}
           </div>
+          {appInstalled === false ? (
+            <Button
+              variant="default"
+              onClick={() => {
+                const appSlug = (import.meta as any).env?.VITE_GITHUB_APP_SLUG as string | undefined;
+                if (!appSlug) {
+                  toast.error('GitHub App slug not configured');
+                  return;
+                }
+                const url = `https://github.com/apps/${appSlug}/installations/new`;
+                window.open(url, '_blank');
+              }}
+              className="flex flex-shrink-0 ml-auto bg-cta-600 hover:bg-cta-700 text-white"
+            >
+              <Plug className="w-4 h-4 mr-2" />
+              Connect GitHub App
+            </Button>
+          ) : appInstalled === true ? (
+            <div className="flex flex-shrink-0 ml-auto">
+              <span className="inline-flex items-center rounded-sm bg-status-success/20 text-status-success px-2 py-1 text-xs border border-status-success/40">
+                <Plug className="w-3 h-3 mr-1" />
+                App Connected
+              </span>
+            </div>
+          ) : null}
           <Button
             variant="outline"
-            onClick={() => window.open(repository.repo_url, '_blank')}
-            className="ml-auto hidden sm:flex flex-shrink-0"
+            onClick={() => {
+              const direct = (owner && repo) ? `https://github.com/${owner}/${repo}` : '';
+              const fallbackFullName = (repository as any).full_name ? `https://github.com/${(repository as any).full_name}` : '';
+              const fallbackRepoUrl = (repository as any).repo_url || '';
+              const url = direct || fallbackFullName || fallbackRepoUrl;
+              if (url) {
+                window.open(url, '_blank');
+              } else {
+                toast.error('Could not determine GitHub URL');
+              }
+            }}
+            className={`flex flex-shrink-0 ${appInstalled === null ? 'ml-auto' : 'ml-2'}`}
           >
             <ExternalLink className="w-4 h-4 mr-2" />
             View on GitHub
@@ -443,6 +532,15 @@ export default function RepositoryDetail() {
                         </div>
                         
                         <div className="flex gap-2">
+                          {/* Ad-hoc button to trigger the workflow. The trigger will be automated by the github app in the near future. */}
+                          <Button
+                            variant="default"
+                            onClick={() => handleRunWorkflowForIssue(issue.number)}
+                            disabled={dispatchingIssues.has(issue.number)}
+                            className="p-2 bg-cta-500 hover:bg-cta-600 text-white"
+                          >
+                            <Play className="w-4 h-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             onClick={() => toggleIssueComments(issue.number)}

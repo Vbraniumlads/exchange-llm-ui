@@ -95,6 +95,23 @@ export class GitHubService {
       updated_at: response.issue.created_at
     };
   }
+
+  async dispatchWorkflow(
+    owner: string,
+    repo: string,
+    workflowId: string,
+    inputs: Record<string, any> = {},
+    ref: string = 'main'
+  ): Promise<{ success: boolean; message: string }> {
+    return apiClient.post<{ success: boolean; message: string }>(
+      '/workflows/dispatch',
+      { owner, repo, workflowId, ref, inputs }
+    );
+  }
+
+  async getAppInstallationStatus(owner: string, repo: string): Promise<{ installed: boolean; installationId?: number }> {
+    return apiClient.get<{ installed: boolean; installationId?: number }>(`/workflows/installation-status/${owner}/${repo}`);
+  }
 }
 
 export const githubService = new GitHubService();

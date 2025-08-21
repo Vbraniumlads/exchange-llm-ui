@@ -1,4 +1,5 @@
 import type { GitHubRepository, GitHubIssue, ClaudeRequest, ImplementationDetails, ExplanationDetails, ReviewDetails } from '../types/index.js';
+import { dispatchWorkflow } from './githubAppAuthService.js';
 
 class ClaudeService {
   /**
@@ -33,12 +34,18 @@ class ClaudeService {
     issue: GitHubIssue
   ): Promise<void> {
     try {
-      // Use workflow_dispatch to trigger Claude workflow directly
-      await this.triggerWorkflowDispatch(github, repository, 'claude.yml', {
-        issue_number: issue.number.toString(),
-        repository: repository.full_name
+      // Use GitHub App installation token to trigger workflow_dispatch
+      await dispatchWorkflow({
+        owner: repository.owner.login,
+        repo: repository.name,
+        workflowId: 'claude.yml',
+        ref: 'main',
+        inputs: {
+          action_type: 'create-pr',
+          context: issue.body || ''
+        },
       });
-      
+
       console.log(`✅ Triggered Claude workflow for issue #${issue.number}`);
     } catch (error) {
       console.error('❌ Failed to trigger Claude workflow:', error);
