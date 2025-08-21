@@ -37,7 +37,8 @@
       "Bash(source:*)",
       "Bash(GITHUB_APP_ID=1734153 ./deploy.sh)",
       "Bash(open:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(gcloud run services describe:*)"
     ],
     "deny": []
   }
