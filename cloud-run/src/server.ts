@@ -5,7 +5,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { App } from '@octokit/app';
-import { Octokit } from '@octokit/rest';
 
 const execAsync = promisify(exec);
 const app = express();
@@ -175,6 +174,7 @@ async function cloneRepository(
   }
 }
 
+/*
 async function createPullRequest(
   workDir: string,
   owner: string,
@@ -220,6 +220,7 @@ async function createPullRequest(
     throw new Error(`Failed to create pull request: ${error.message}`);
   }
 }
+*/
 
 app.post('/run', async (req: Request<{}, {}, RunRequest>, res: Response): Promise<void> => {
   const {
@@ -258,7 +259,7 @@ app.post('/run', async (req: Request<{}, {}, RunRequest>, res: Response): Promis
 
     // Clone repository
     console.log('Cloning repository...');
-    const { owner, repo, token } = await cloneRepository(
+    await cloneRepository(
       repository_url,
       workDir,
       githubApp,
@@ -268,14 +269,21 @@ app.post('/run', async (req: Request<{}, {}, RunRequest>, res: Response): Promis
     // Checkout base branch
     await execAsync(`git checkout ${base_branch}`, { cwd: workDir });
 
+    const improved_task_prompt = `
+    You are a senior software engineer. You are given a task to improve the code in the repository.
+    Create a pull request with the changes.
+    Task: ${task_prompt}
+    `
+
     // Run Claude Code
     console.log('Running Claude Code...');
     const { stdout } = await runClaudeCode(
-      task_prompt,
+      improved_task_prompt,
       claude_oauth_token,
       workDir
     );
 
+    /*
     // Create pull request
     console.log('Creating pull request...');
     const branchName = `claude-code-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -288,28 +296,17 @@ app.post('/run', async (req: Request<{}, {}, RunRequest>, res: Response): Promis
       token,
       base_branch
     );
+    */
 
     const executionTime = Date.now() - startTime;
 
-    if (!pr) {
-      res.json({
-        success: true,
-        message: 'Task completed but no changes were made',
-        claude_output: stdout,
-        execution_time_ms: executionTime
-      });
-      return;
-    }
-
     res.json({
       success: true,
-      pull_request_url: pr.html_url,
-      pull_request_number: pr.number,
-      branch_name: branchName,
+      message: 'Task completed',
       claude_output: stdout,
       execution_time_ms: executionTime
     });
-
+    return;
   } catch (error: any) {
     console.error('Error:', error);
     res.status(500).json({
