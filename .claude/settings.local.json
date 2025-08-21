@@ -35,7 +35,9 @@
       "Bash(/usr/local/bin/gcloud run services logs read claude-code-runner --limit=30 --region=us-central1)",
       "Bash(gcloud run services update:*)",
       "Bash(source:*)",
-      "Bash(GITHUB_APP_ID=1734153 ./deploy.sh)"
+      "Bash(GITHUB_APP_ID=1734153 ./deploy.sh)",
+      "Bash(open:*)",
+      "Bash(docker:*)"
     ],
     "deny": []
   }

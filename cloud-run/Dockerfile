@@ -55,6 +55,13 @@ COPY --from=builder /app/dist ./dist
 # Create workspace directory for Claude Code operations
 RUN mkdir -p /workspace && chmod 777 /workspace
 
+# Create a non-root user to run the application
+RUN useradd -m -u 1001 -s /bin/bash appuser && \
+    chown -R appuser:appuser /app /workspace
+
+# Switch to non-root user
+USER appuser
+
 # Expose port for Cloud Run
 EXPOSE 8080
 

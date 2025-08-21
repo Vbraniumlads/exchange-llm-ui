@@ -87,9 +87,9 @@ async function runClaudeCode(
   // Use print mode (-p) for non-interactive execution
   // Escape the prompt properly for shell
   const escapedPrompt = taskPrompt.replace(/'/g, "'\\''");
-  
+
   // Use echo to pipe the prompt to claude to avoid any interactive issues
-  const command = `echo '${escapedPrompt}' | claude -p '${escapedPrompt}'`;
+  const command = `echo '${escapedPrompt}' | claude -p '${escapedPrompt}' --dangerously-skip-permissions`;
 
   console.log(`Command: ${command}`);
 
@@ -444,12 +444,12 @@ app.post('/check-installation', async (req: Request, res: Response): Promise<voi
 
 app.post('/test-auth', async (req: Request, res: Response): Promise<void> => {
   const { claude_oauth_token } = req.body;
-  
+
   if (!claude_oauth_token) {
     res.status(400).json({ error: 'Missing claude_oauth_token' });
     return;
   }
-  
+
   try {
     // Test authentication with Claude
     const env = {
@@ -460,10 +460,10 @@ app.post('/test-auth', async (req: Request, res: Response): Promise<void> => {
       CI: 'true',
       NO_COLOR: '1'
     };
-    
+
     // Try various authentication methods
     const tests: any = {};
-    
+
     // Test 1: Simple version check
     try {
       const { stdout } = await execAsync('claude --version', { env, timeout: 5000 });
@@ -471,18 +471,18 @@ app.post('/test-auth', async (req: Request, res: Response): Promise<void> => {
     } catch (error: any) {
       tests.version = `Error: ${error.message}`;
     }
-    
+
     // Test 2: Try to run a simple command with -p flag
     try {
-      const { stdout } = await execAsync(`echo 'What is 2+2?' | claude -p 'What is 2+2?'`, { 
-        env, 
-        timeout: 10000 
+      const { stdout } = await execAsync(`echo 'What is 2+2?' | claude -p 'What is 2+2?'`, {
+        env,
+        timeout: 10000
       });
       tests.simple_command = stdout.substring(0, 200);
     } catch (error: any) {
       tests.simple_command = `Error: ${error.message}`;
     }
-    
+
     // Test 3: Check authentication status
     try {
       const { stdout } = await execAsync('claude auth status', { env, timeout: 5000 });
@@ -490,7 +490,7 @@ app.post('/test-auth', async (req: Request, res: Response): Promise<void> => {
     } catch (error: any) {
       tests.auth_status = `Error: ${error.message}`;
     }
-    
+
     res.json({
       status: 'ok',
       tests
@@ -502,6 +502,7 @@ app.post('/test-auth', async (req: Request, res: Response): Promise<void> => {
     });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`Claude Code Cloud Run Service running on port ${PORT}`);
