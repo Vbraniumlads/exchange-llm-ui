@@ -9,7 +9,7 @@ import { Octokit } from '@octokit/rest';
 import { issueCommentController } from '../controllers/issueCommentController.js';
 import { workflowDispatchRouter } from './workflow-dispatch.js';
 
-export function setupRoutes(app: Express, webhooks: Webhooks | null, github: Octokit): void {
+export function setupRoutes(app: Express, webhooks: Webhooks | null): void {
   // OAuth authentication routes
   app.use('/api/auth', authRouter);
 
@@ -20,18 +20,18 @@ export function setupRoutes(app: Express, webhooks: Webhooks | null, github: Oct
   app.use('/api/workflows', workflowDispatchRouter);
 
   // Issue generation webhook endpoint
-  app.post('/api/generate-issue', issueGeneratorController(github));
+  app.post('/api/generate-issue', issueGeneratorController());
 
   // Issue comment endpoint
-  app.post('/api/issue-comment', issueCommentController(github));
+  app.post('/api/issue-comment', issueCommentController());
 
   // Pull request comment endpoint
-  app.post('/api/pr-comment', prCommentController(github));
+  app.post('/api/pr-comment', prCommentController());
 
   // GitHub App routes (only if configured)
   if (webhooks) {
     // Webhook endpoint
-    app.post('/webhook', webhookController(github, webhooks));
+    app.post('/webhook', webhookController(webhooks));
 
     // GitHub App installation callback
     app.get('/callback', (_req, res) => {

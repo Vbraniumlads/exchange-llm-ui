@@ -1,5 +1,6 @@
 import axios from 'axios';
 import jwt from 'jsonwebtoken';
+import { Octokit } from '@octokit/rest';
 
 export interface WorkflowDispatchParams {
   owner: string;
@@ -19,7 +20,7 @@ export interface CloudRunResponse {
   message?: string;
 }
 
-function ensureAppConfig(): { appId: number; privateKey: string } {
+export function ensureAppConfig(): { appId: number; privateKey: string } {
   const appIdRaw = process.env.GITHUB_APP_ID;
   const privateKey = process.env.GITHUB_APP_PRIVATE_KEY || '';
 
@@ -35,14 +36,14 @@ function ensureAppConfig(): { appId: number; privateKey: string } {
   return { appId, privateKey };
 }
 
-function normalizePrivateKey(raw: string): string {
+export function normalizePrivateKey(raw: string): string {
   if (raw.includes('\\n')) {
     return raw.replace(/\\n/g, '\n');
   }
   return raw;
 }
 
-function createAppJwt(appId: number, privateKey: string): string {
+export function createAppJwt(appId: number, privateKey: string): string {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     iat: now - 60,
@@ -52,7 +53,7 @@ function createAppJwt(appId: number, privateKey: string): string {
   return jwt.sign(payload, normalizePrivateKey(privateKey), { algorithm: 'RS256' });
 }
 
-async function getInstallationIdForRepo(owner: string, repo: string, jwtToken: string): Promise<number> {
+export async function getInstallationIdForRepo(owner: string, repo: string, jwtToken: string): Promise<number> {
   const url = `https://api.github.com/repos/${owner}/${repo}/installation`;
   const { data } = await axios.get(url, {
     headers: {
@@ -63,7 +64,7 @@ async function getInstallationIdForRepo(owner: string, repo: string, jwtToken: s
   return data.id as number;
 }
 
-async function createInstallationAccessToken(installationId: number, jwtToken: string): Promise<string> {
+export async function createInstallationAccessToken(installationId: number, jwtToken: string): Promise<string> {
   const url = `https://api.github.com/app/installations/${installationId}/access_tokens`;
   const { data } = await axios.post(url, {}, {
     headers: {
@@ -72,6 +73,17 @@ async function createInstallationAccessToken(installationId: number, jwtToken: s
     },
   });
   return data.token as string;
+}
+
+export async function createRepositoryClient(owner: string, repo: string): Promise<Octokit> {
+  const { appId, privateKey } = ensureAppConfig();
+  const appJwt = createAppJwt(appId, privateKey);
+  const installationId = await getInstallationIdForRepo(owner, repo, appJwt);
+  const installationToken = await createInstallationAccessToken(installationId, appJwt);
+
+  return new Octokit({
+    auth: installationToken,
+  });
 }
 
 export async function dispatchWorkflow(params: WorkflowDispatchParams): Promise<CloudRunResponse> {

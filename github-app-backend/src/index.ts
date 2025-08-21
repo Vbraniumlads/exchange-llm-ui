@@ -6,25 +6,12 @@ import { issueGeneratorController } from './controllers/issueGeneratorController
 import { issueCommentController } from './controllers/issueCommentController.js';
 import { prCommentController } from './controllers/prCommentController.js';
 import { setupRoutes } from './routes/index.js';
+import { ensureAppConfig, createAppJwt, createRepositoryClient } from './services/githubAppAuthService.js';
 
 config();
 
-// GitHub Personal Access Token
-const githubToken = process.env.GITHUB_TOKEN || '';
-
-if (!githubToken) {
-  console.error('❌ Missing GITHUB_TOKEN environment variable');
-  console.log('Please set GITHUB_TOKEN in your .env file');
-  process.exit(1);
-}
-
 const app = express();
 const port = parseInt(process.env.PORT || '3001', 10);
-
-// Initialize GitHub client with personal access token
-const github = new Octokit({
-  auth: githubToken,
-});
 
 // Middleware
 app.use(cors());
@@ -40,7 +27,7 @@ app.get('/health', (_req, res) => {
 });
 
 // API Routes
-setupRoutes(app, null, github);
+setupRoutes(app, null);
 
 app.get('/callback', (_req, res) => {
   res.json({ message: 'GitHub authentication successful!' });

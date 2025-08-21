@@ -6,8 +6,9 @@ import type { WebhookPayload, GitHubRepository } from '../types/index.js';
 import { todoParser } from '../services/todoParser.js';
 import { repositoryService } from '../services/repositoryService.js';
 import { claudeService } from '../services/claudeService.js';
+import { createRepositoryClient } from '../services/githubAppAuthService.js';
 
-export function webhookController(github: Octokit, webhooks: Webhooks) {
+export function webhookController(webhooks: Webhooks) {
   return async (req: Request, res: Response): Promise<void> => {
     try {
       const signature = req.get('X-Hub-Signature-256');
@@ -32,10 +33,10 @@ export function webhookController(github: Octokit, webhooks: Webhooks) {
       // Handle different webhook events
       switch (event) {
         case 'push':
-          await handlePushEvent(payload, github);
+          await handlePushEvent(payload);
           break;
         case 'issues':
-          await handleIssuesEvent(payload, github);
+          await handleIssuesEvent(payload);
           break;
         default:
           console.log(`🤷 Unhandled event: ${event}`);
@@ -49,13 +50,16 @@ export function webhookController(github: Octokit, webhooks: Webhooks) {
   };
 }
 
-async function handlePushEvent(payload: WebhookPayload, github: Octokit): Promise<void> {
+async function handlePushEvent(payload: WebhookPayload): Promise<void> {
   const { repository } = payload;
 
   console.log(`🔄 Push event in ${repository.full_name}`);
 
   try {
-    console.log(`✅ Using personal access token for GitHub API`);
+    console.log(`✅ Using GitHub App authentication for GitHub API`);
+
+    // Create repository-specific GitHub client
+    const github = await createRepositoryClient(repository.owner.login, repository.name);
 
     // Check for todo files in the push
     const modifiedFiles = payload.commits?.flatMap(commit =>
@@ -84,7 +88,7 @@ async function handlePushEvent(payload: WebhookPayload, github: Octokit): Promis
   }
 }
 
-async function handleIssuesEvent(payload: WebhookPayload, github: Octokit): Promise<void> {
+async function handleIssuesEvent(payload: WebhookPayload): Promise<void> {
   const { action, issue, repository } = payload;
 
   console.log('🔍 Issues event payload:', payload);
@@ -103,6 +107,11 @@ async function handleIssuesEvent(payload: WebhookPayload, github: Octokit): Prom
       console.log('🤖 Claude mentioned in issue!');
 
       try {
+        console.log(`✅ Using GitHub App authentication for GitHub API`);
+
+        // Create repository-specific GitHub client
+        const github = await createRepositoryClient(repository.owner.login, repository.name);
+
         await claudeService.handleClaudeMention(github, repository, issue);
 
         // Optionally trigger additional workflows for complex requests

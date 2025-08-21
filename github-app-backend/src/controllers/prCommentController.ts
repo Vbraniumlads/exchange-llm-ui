@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import type { Octokit } from '@octokit/rest';
+import { createRepositoryClient } from '../services/githubAppAuthService.js';
 
 interface PrCommentRequest {
   repository: {
@@ -14,15 +14,15 @@ interface PrCommentRequest {
   };
 }
 
-export function prCommentController(github: Octokit) {
+export function prCommentController() {
   return async (req: Request, res: Response): Promise<void> => {
     try {
       const payload: PrCommentRequest = req.body;
 
       // Validate required fields
       if (!payload.repository || !payload.pull_request || !payload.comment) {
-        res.status(400).json({ 
-          error: 'Missing required fields: repository, pull_request, and comment are required' 
+        res.status(400).json({
+          error: 'Missing required fields: repository, pull_request, and comment are required'
         });
         return;
       }
@@ -30,7 +30,10 @@ export function prCommentController(github: Octokit) {
       const { repository, pull_request, comment } = payload;
 
       console.log(`💬 Adding comment to PR #${pull_request.number} in ${repository.owner}/${repository.name}`);
-      console.log(`✅ Using personal access token for GitHub API`);
+      console.log(`✅ Using GitHub App authentication for GitHub API`);
+
+      // Create repository-specific GitHub client
+      const github = await createRepositoryClient(repository.owner, repository.name);
 
       // Create the comment on the pull request
       const response = await github.rest.issues.createComment({
@@ -57,30 +60,32 @@ export function prCommentController(github: Octokit) {
 
     } catch (error: any) {
       console.error('❌ PR comment creation error:', error);
-      
-      if (error.status === 404) {
-        res.status(404).json({ 
-          error: 'Pull request or repository not found',
-          message: 'Make sure the pull request exists and you have access to the repository'
-        });
-      } else if (error.status === 403) {
+
+      if (error?.status === 404) {
         const errorMessage = error.response?.data?.message || error.message;
-        if (errorMessage?.includes('Resource not accessible by personal access token')) {
-          res.status(403).json({ 
-            error: 'Insufficient token permissions',
-            message: 'The personal access token lacks the "issues" write permission. Please update your token at: https://github.com/settings/tokens',
-            fix: 'Enable the "issues" scope in your GitHub token settings'
+        if (errorMessage?.includes('Not Found') && error.request?.url?.includes('/installation')) {
+          res.status(404).json({
+            error: 'GitHub App not installed',
+            message: 'The GitHub App is not installed on this repository. Please install the GitHub App first.',
+            fix: 'Install the GitHub App on the repository or organization'
           });
         } else {
-          res.status(403).json({ 
-            error: 'Permission denied',
-            message: errorMessage || 'The personal access token does not have permission to comment on pull requests in this repository'
+          res.status(404).json({
+            error: 'Pull request or repository not found',
+            message: 'Make sure the pull request exists and the GitHub App has access to the repository'
           });
         }
+      } else if (error.status === 403) {
+        const errorMessage = error.response?.data?.message || error.message;
+        res.status(403).json({
+          error: 'Permission denied',
+          message: errorMessage || 'The GitHub App does not have permission to comment on pull requests in this repository',
+          fix: 'Make sure the GitHub App has "Issues" write permission'
+        });
       } else {
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'PR comment creation failed',
-          message: error.message || 'Unknown error occurred'
+          message: error?.message || 'Unknown error occurred'
         });
       }
     }
