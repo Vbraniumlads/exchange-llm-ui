@@ -10,6 +10,14 @@ export class GitHubService {
     return apiClient.post<SyncResponse>('/repositories/sync');
   }
 
+  async getAllRepositories(): Promise<GitHubRepository[]> {
+    return apiClient.get<GitHubRepository[]>('/repositories/available');
+  }
+
+  async connectRepositories(repositories: Array<{ owner: string; name: string }>): Promise<SyncResponse> {
+    return apiClient.post<SyncResponse>('/repositories/connect', { repositories });
+  }
+
   async getRepository(owner: string, repo: string): Promise<GitHubRepository> {
     return apiClient.get<GitHubRepository>(`/repositories/${owner}/${repo}`);
   }

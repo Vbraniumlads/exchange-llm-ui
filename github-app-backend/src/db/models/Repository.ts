@@ -8,6 +8,22 @@ export interface Repository {
   last_synced_at: string;
   created_at: string;
   updated_at: string;
+  owner?: {
+    login: string;
+    type: 'User' | 'Organization';
+    avatar_url?: string;
+  };
+  private?: boolean;
+  language?: string;
+  stargazers_count?: number;
+  forks_count?: number;
+  permissions?: {
+    admin: boolean;
+    maintain: boolean;
+    push: boolean;
+    triage: boolean;
+    pull: boolean;
+  };
 }
 
 export interface GitHubRepositoryData {
@@ -19,6 +35,21 @@ export interface GitHubRepositoryData {
   private: boolean;
   updated_at: string;
   created_at: string;
+  owner?: {
+    login: string;
+    type: 'User' | 'Organization';
+    avatar_url?: string;
+  };
+  language?: string;
+  stargazers_count?: number;
+  forks_count?: number;
+  permissions?: {
+    admin: boolean;
+    maintain: boolean;
+    push: boolean;
+    triage: boolean;
+    pull: boolean;
+  };
 }
 
 export interface RepositoryCreateInput {

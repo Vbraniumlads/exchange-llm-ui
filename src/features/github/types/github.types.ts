@@ -1,17 +1,34 @@
 export interface GitHubRepository {
+  // Core identifiers
   id: number;
-  user_id: number;
-  repo_name: string;
-  repo_url: string;
+  repo_name: string;  // From database
+  name?: string;      // From GitHub API
+  full_name?: string;
+
+  // URLs
+  repo_url: string;   // From database
+  html_url?: string;  // From GitHub API
+
+  // Repository metadata
   description?: string;
-  last_synced_at: string;
-  created_at: string;
+  private?: boolean;
+  language?: string | null;
+
+  // Statistics
+  stargazers_count?: number;
+  forks_count?: number;
+  stars?: number;  // From GitHub API transformed response
+  forks?: number;  // From GitHub API transformed response
+
+  // Owner information
   owner?: {
     login: string;
-    id: number;
-    avatar_url: string;
-    type: string;
+    id?: number;
+    avatar_url?: string;
+    type?: 'User' | 'Organization';
   };
+
+  // Permissions
   permissions?: {
     admin: boolean;
     maintain?: boolean;
@@ -19,12 +36,14 @@ export interface GitHubRepository {
     triage?: boolean;
     pull: boolean;
   };
-  full_name?: string;
-  private?: boolean;
-  language?: string | null;
-  stars?: number;
-  forks?: number;
+
+  // Timestamps
+  created_at: string;
   updated_at?: string;
+
+  // Database-specific fields
+  user_id?: number;
+  last_synced_at?: string;
 }
 
 export interface SyncResponse {

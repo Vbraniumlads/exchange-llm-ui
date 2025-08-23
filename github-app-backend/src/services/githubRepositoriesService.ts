@@ -405,7 +405,10 @@ class GitHubRepositoriesService {
         }
       );
 
-      return response.data;
+      // Filter out pull requests - they have a pull_request property
+      const issues = response.data.filter((item: any) => !item.pull_request);
+      
+      return issues;
 
     } catch (error) {
       console.error('❌ Error fetching issues:', error);

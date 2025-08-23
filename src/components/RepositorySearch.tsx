@@ -31,9 +31,14 @@ export function RepositorySearch({ repositories, className = '' }: RepositorySea
   };
 
   const handleViewDetails = (repo: GitHubRepository) => {
-    // Extract owner from repo_url
-    const urlParts = repo.repo_url.split('/');
-    const owner = urlParts[urlParts.length - 2];
+    // Extract owner from URL or use owner object
+    let owner;
+    if (repo.owner?.login) {
+      owner = repo.owner.login;
+    } else {
+      const urlParts = repo.repo_url.split('/');
+      owner = urlParts[urlParts.length - 2];
+    }
     navigate(`/repository/${owner}/${repo.repo_name}`);
   };
 
