@@ -29,7 +29,7 @@ export function FloatingNavbar({ user, isAuthenticated = false, onLogout }: Floa
                 href="/" 
                 className="text-xl font-serif font-bold text-foreground hover:opacity-80 transition-smooth flex items-center gap-2"
               >
-                {/* <img src="/torch.png" alt="VibeTorch" className="w-6 h-6" /> */}
+                {/* <img src="/torch.webp" alt="VibeTorch" className="w-6 h-6" /> */}
                 VibeTorch
               </a>
             </div>

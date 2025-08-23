@@ -260,7 +260,7 @@ export default function VibetorchApp() {
             <div className="relative mb-2">
               <div className="w-full h-80 lg:h-[28rem] relative overflow-hidden">
                 <img 
-                  src="/torch.png" 
+                  src="/torch.webp" 
                   alt="Vibetorch" 
                   className="w-[150%] h-auto max-h-none object-contain absolute top-1/2 -left-20 transform -translate-y-1/2 rounded-3xl cursor-grab"
                   style={{
@@ -387,7 +387,7 @@ export default function VibetorchApp() {
                 {/* Logo */}
                 <div className="text-center mb-6">
                   <img 
-                    src="/torch.png" 
+                    src="/torch.webp" 
                     alt="Vibetorch" 
                     className="w-24 h-24 mx-auto rounded-2xl mb-4"
                   />

@@ -17,13 +17,13 @@
   "scope": "/",
   "icons": [
     {
-      "src": "/torch.png",
+      "src": "/torch.webp",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/torch.png",
+      "src": "/torch.webp",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable any"
