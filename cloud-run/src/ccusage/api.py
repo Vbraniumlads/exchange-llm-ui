@@ -51,9 +51,14 @@ _RESET_HINT = re.compile(
 
 def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:
     """Run shell command and return (returncode, output)."""
-    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    out = (p.stdout or "") + ("\n" + p.stderr if p.stderr else "")
-    return p.returncode, out.strip()
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        out = (p.stdout or "") + ("\n" + p.stderr if p.stderr else "")
+        return p.returncode, out.strip()
+    except subprocess.TimeoutExpired:
+        return 1, f"Command timed out after {timeout} seconds"
+    except Exception as e:
+        return 1, f"Command failed: {str(e)}"
 
 
 def _normalize_plan(plan: PlanType | str) -> dict[str, Any]:
@@ -110,12 +115,17 @@ def get_ccusage_status(
     limit_info = _probe_limit_via_claude(test_cmd)
 
     # Fetch ccusage data
-    code, raw = _run(["npx", "ccusage@latest", "blocks", "--active", "--json"])
+    code, raw = _run(["npx", "--yes", "ccusage@latest", "blocks", "--active", "--json"])
     if code != 0:
-        raise RuntimeError(f"ccusage failed: {raw[:200]}")
+        raise RuntimeError(f"ccusage command failed: {raw[:200]}")
 
-    data = json.loads(raw)
-    block = data["blocks"][0]
+    try:
+        data = json.loads(raw)
+        if not data.get("blocks") or len(data["blocks"]) == 0:
+            raise RuntimeError("No active ccusage blocks found")
+        block = data["blocks"][0]
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Invalid JSON response from ccusage: {str(e)}")
 
     # Extract values
     active = bool(block.get("isActive", False))
@@ -215,7 +225,25 @@ def status(plan: str = Query("Pro", description="Pro | Max5 | Max20")):
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except RuntimeError as re_err:
-        raise HTTPException(status_code=502, detail=str(re_err))
+        # Provide fallback data when ccusage fails
+        cfg = PLAN_CONFIG.get(plan, PLAN_CONFIG["Pro"])
+        fallback_data = {
+            "limit": {"type": "error", "message": "ccusage unavailable"},
+            "plan": plan,
+            "active": False,
+            "models": [],
+            "cost": {"used": 0, "limit": cfg["cost_limit"], "percent": 0.0},
+            "tokens": {"used": 0, "limit": cfg["token_limit"], "percent": 0.0},
+            "messages": {"used": 0, "limit": cfg["message_limit"], "percent": 0.0},
+            "time_to_reset": {"remaining_minutes": 0, "reset_at": "Unknown"},
+            "burn_rate": 0.0,
+            "cost_rate": 0.0,
+            "predictions": {
+                "tokens_will_run_out": "N/A",
+                "limit_resets_at": "N/A"
+            }
+        }
+        return fallback_data
 
 
 @app.get("/health")
