@@ -1,7 +1,7 @@
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,11 @@
     "lint": "eslint .",
     "preview": "vite preview --port $PORT --host 0.0.0.0",
     "prestart": "vite build",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "ccusage:install": "cd cloud-run/src/ccusage && pip install -r requirements.txt",
+    "ccusage:dev": "cd cloud-run/src/ccusage && uvicorn api:app --reload --port 8001",
+    "ccusage:start": "cd cloud-run/src/ccusage && uvicorn api:app --host 0.0.0.0 --port 8001",
+    "ccusage:test": "cd cloud-run/src/ccusage && pytest test.py -v"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

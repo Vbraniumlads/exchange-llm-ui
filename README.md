@@ -360,6 +360,41 @@ cd cloud-run
 - **Repository Health**: Code quality improvements and automation metrics
 - **Webhook Events**: Real-time processing statistics
 
+## 🔍 CCUsage API
+
+Real-time Claude usage monitoring API.
+
+### Setup
+
+```bash
+npm run ccusage:install  # Install dependencies
+npm run ccusage:dev      # Start development server (port 8001)
+npm run ccusage:test     # Run tests
+```
+
+### Endpoints
+
+**GET /status?plan=Pro**
+```json
+{
+  "plan": "Pro",
+  "models": ["claude-sonnet-4-20250514"],
+  "cost": {"used": 7.14, "limit": 18.0, "percent": 39.7},
+  "tokens": {"used": 16701.286, "limit": 19000, "percent": 87.9},
+  "messages": {"used": 201, "limit": 250, "percent": 80.4}
+}
+```
+
+**GET /health**
+```json
+{"status": "healthy"}
+```
+
+### Plans
+- **Pro**: 19K tokens, $18, 250 messages
+- **Max5**: 88K tokens, $35, 1K messages  
+- **Max20**: 220K tokens, $140, 2K messages
+
 ---
 
 _VibeTorch - Where AI meets productivity. Let your code vibe while you rest._ 🌙✨
