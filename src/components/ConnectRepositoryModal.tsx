@@ -81,7 +81,7 @@ export function ConnectRepositoryModal({
 
   const filteredRepositories = repositories.filter(repo => {
     const matchesSearch = !searchQuery || 
-      (repo.name || repo.repo_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       repo.description?.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesOwner = selectedOwner === 'all' || 
@@ -117,7 +117,7 @@ export function ConnectRepositoryModal({
       // Call API to connect repositories
       await githubService.connectRepositories(reposToConnect.map(r => ({
         owner: r.owner?.login || '',
-        name: r.name || r.repo_name
+        name: r.name
       })));
       
       onConnect(reposToConnect);
@@ -293,7 +293,7 @@ export function ConnectRepositoryModal({
                           <User className="w-4 h-4 text-gray-500" />
                         )}
                         <h4 className="font-medium text-foreground truncate">
-                          {repo.owner?.login}/{repo.name || repo.repo_name}
+                          {repo.owner?.login}/{repo.name}
                         </h4>
                         {repo.private ? (
                           <Lock className="w-3 h-3 text-muted-foreground" />
