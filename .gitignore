@@ -28,3 +28,6 @@ dist-ssr
 */*.sqlite
 
 cloud-run/test-request.json
+
+__pycache__/
+*.pyc
