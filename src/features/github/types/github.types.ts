@@ -1,16 +1,18 @@
 export interface GitHubRepository {
   id: number;
-  user_id: number;
-  repo_name: string;
-  repo_url: string;
+  user_id?: number;
+  name?: string;  // Used by GitHub API response
+  repo_name: string;  // Used by database
+  repo_url?: string;
+  html_url?: string;  // GitHub API field
   description?: string;
-  last_synced_at: string;
+  last_synced_at?: string;
   created_at: string;
   owner?: {
     login: string;
-    id: number;
-    avatar_url: string;
-    type: string;
+    id?: number;
+    avatar_url?: string;
+    type?: string;
   };
   permissions?: {
     admin: boolean;
@@ -23,7 +25,9 @@ export interface GitHubRepository {
   private?: boolean;
   language?: string | null;
   stars?: number;
+  stargazers_count?: number;
   forks?: number;
+  forks_count?: number;
   updated_at?: string;
 }
 

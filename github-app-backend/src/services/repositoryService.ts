@@ -24,26 +24,51 @@ class RepositoryService {
     console.log('🚀 Initializing database...');
     
     // Run migrations - try multiple possible paths
-    const possibleMigrationPaths = [
-      path.join(__dirname, '../db/migrations/001_create_repositories.sql'),
-      path.join(process.cwd(), 'src/db/migrations/001_create_repositories.sql'),
-      path.join(process.cwd(), 'dist/db/migrations/001_create_repositories.sql'),
+    const migrationFiles = ['001_create_repositories.sql', '002_add_repository_fields.sql'];
+    const possibleMigrationDirs = [
+      path.join(__dirname, '../db/migrations'),
+      path.join(process.cwd(), 'src/db/migrations'),
+      path.join(process.cwd(), 'dist/db/migrations'),
     ];
     
-    let migrationExecuted = false;
+    let migrationsExecuted = 0;
     
-    for (const migrationPath of possibleMigrationPaths) {
-      console.log('🔍 Checking migration path:', migrationPath);
-      if (fs.existsSync(migrationPath)) {
-        console.log('✅ Found migration file, executing...');
-        const migration = fs.readFileSync(migrationPath, 'utf8');
-        this.db.exec(migration);
-        migrationExecuted = true;
+    for (const migrationFile of migrationFiles) {
+      let migrationExecuted = false;
+      
+      for (const migrationDir of possibleMigrationDirs) {
+        const migrationPath = path.join(migrationDir, migrationFile);
+        console.log('🔍 Checking migration path:', migrationPath);
+        
+        if (fs.existsSync(migrationPath)) {
+          console.log(`✅ Found migration file ${migrationFile}, executing...`);
+          const migration = fs.readFileSync(migrationPath, 'utf8');
+          
+          try {
+            this.db.exec(migration);
+            migrationExecuted = true;
+            migrationsExecuted++;
+            break;
+          } catch (error) {
+            // Migration might fail if columns already exist (for 002 migration)
+            if (migrationFile === '002_add_repository_fields.sql') {
+              console.log('⚠️  Migration 002 may have already been applied, continuing...');
+              migrationExecuted = true;
+              migrationsExecuted++;
+              break;
+            }
+            throw error;
+          }
+        }
+      }
+      
+      if (!migrationExecuted && migrationFile === '001_create_repositories.sql') {
+        // Only fail if the first migration is not found
         break;
       }
     }
     
-    if (!migrationExecuted) {
+    if (migrationsExecuted === 0) {
       console.log('⚠️  Migration file not found, creating table manually...');
       // Fallback: create table directly if migration file is not found
       this.db.exec(`
@@ -76,7 +101,8 @@ class RepositoryService {
       WHERE user_id = ?
       ORDER BY last_synced_at DESC
     `);
-    return stmt.all(userId) as Repository[];
+    const rows = stmt.all(userId) as any[];
+    return rows.map(row => this.transformDbRow(row));
   }
 
   async findByUserIdAndGithubId(userId: number, githubRepoId: number): Promise<Repository | null> {
@@ -84,17 +110,19 @@ class RepositoryService {
       SELECT * FROM repositories 
       WHERE user_id = ? AND github_repo_id = ?
     `);
-    const result = stmt.get(userId, githubRepoId) as Repository | undefined;
-    return result || null;
+    const result = stmt.get(userId, githubRepoId) as any;
+    return result ? this.transformDbRow(result) : null;
   }
 
-  async create(data: RepositoryCreateInput): Promise<Repository> {
+  async create(data: any): Promise<Repository> {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
       INSERT INTO repositories (
         user_id, github_repo_id, repo_name, repo_url, description, 
+        owner_login, owner_type, owner_avatar_url,
+        is_private, language, stargazers_count, forks_count, permissions,
         last_synced_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -103,6 +131,14 @@ class RepositoryService {
       data.repo_name,
       data.repo_url,
       data.description || null,
+      data.owner?.login || null,
+      data.owner?.type || null,
+      data.owner?.avatar_url || null,
+      data.private ? 1 : 0,
+      data.language || null,
+      data.stargazers_count || 0,
+      data.forks_count || 0,
+      data.permissions ? JSON.stringify(data.permissions) : null,
       now,
       now,
       now
@@ -111,7 +147,7 @@ class RepositoryService {
     return this.findById(Number(result.lastInsertRowid))!;
   }
 
-  async update(id: number, data: RepositoryUpdateInput): Promise<Repository | null> {
+  async update(id: number, data: any): Promise<Repository | null> {
     const updates: string[] = [];
     const values: any[] = [];
 
@@ -130,6 +166,34 @@ class RepositoryService {
     if (data.last_synced_at !== undefined) {
       updates.push('last_synced_at = ?');
       values.push(data.last_synced_at);
+    }
+    if (data.owner !== undefined) {
+      updates.push('owner_login = ?');
+      values.push(data.owner?.login || null);
+      updates.push('owner_type = ?');
+      values.push(data.owner?.type || null);
+      updates.push('owner_avatar_url = ?');
+      values.push(data.owner?.avatar_url || null);
+    }
+    if (data.private !== undefined) {
+      updates.push('is_private = ?');
+      values.push(data.private ? 1 : 0);
+    }
+    if (data.language !== undefined) {
+      updates.push('language = ?');
+      values.push(data.language);
+    }
+    if (data.stargazers_count !== undefined) {
+      updates.push('stargazers_count = ?');
+      values.push(data.stargazers_count);
+    }
+    if (data.forks_count !== undefined) {
+      updates.push('forks_count = ?');
+      values.push(data.forks_count);
+    }
+    if (data.permissions !== undefined) {
+      updates.push('permissions = ?');
+      values.push(data.permissions ? JSON.stringify(data.permissions) : null);
     }
 
     if (updates.length === 0) {
@@ -150,7 +214,7 @@ class RepositoryService {
     return this.findById(id);
   }
 
-  async upsert(userId: number, githubRepoId: number, data: Omit<RepositoryCreateInput, 'user_id' | 'github_repo_id'>): Promise<Repository> {
+  async upsert(userId: number, githubRepoId: number, data: any): Promise<Repository> {
     const existing = await this.findByUserIdAndGithubId(userId, githubRepoId);
 
     if (existing) {
@@ -178,8 +242,24 @@ class RepositoryService {
 
   private findById(id: number): Repository | null {
     const stmt = this.db.prepare('SELECT * FROM repositories WHERE id = ?');
-    const result = stmt.get(id) as Repository | undefined;
-    return result || null;
+    const result = stmt.get(id) as any;
+    if (!result) return null;
+    
+    // Transform database row to Repository object
+    return this.transformDbRow(result);
+  }
+
+  private transformDbRow(row: any): Repository {
+    return {
+      ...row,
+      owner: row.owner_login ? {
+        login: row.owner_login,
+        type: row.owner_type,
+        avatar_url: row.owner_avatar_url
+      } : undefined,
+      private: row.is_private === 1,
+      permissions: row.permissions ? JSON.parse(row.permissions) : undefined
+    };
   }
 
   close(): void {

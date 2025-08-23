@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { githubRepositoriesService } from '../services/githubRepositoriesService.js';
 import { repositoryService } from '../services/repositoryService.js';
 import jwt from 'jsonwebtoken';
-import { GitHubRepositoryData } from '../db/models/Repository.js';
 
 const router = Router();
 
@@ -131,7 +130,13 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       const syncedRepo = await repositoryService.upsert(userId, githubRepo.id, {
         repo_name: githubRepo.name,
         repo_url: githubRepo.html_url,
-        description: githubRepo.description || ''
+        description: githubRepo.description || '',
+        owner: githubRepo.owner,
+        private: githubRepo.private,
+        language: githubRepo.language,
+        stargazers_count: githubRepo.stars,
+        forks_count: githubRepo.forks,
+        permissions: githubRepo.permissions
       });
       syncedRepos.push(syncedRepo);
     }
@@ -421,6 +426,200 @@ router.get('/:owner/:repo/pulls', async (req: Request, res: Response): Promise<v
   }
 });
 
+
+// Get all available repositories (not yet connected)
+router.get('/available', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Authorization header is required' });
+      return;
+    }
+
+    // Extract JWT token and get user ID
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-jwt-secret') as any;
+    const userId = decoded.userId;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Invalid token: user ID not found' });
+      return;
+    }
+
+    // Fetch all repositories from GitHub (personal and organizations)
+    const fetchAllRepositories = async (type: 'owner' | 'member') => {
+      let allRepos: any[] = [];
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore && page <= 10) { // Fetch up to 10 pages (1000 repos)
+        const response = await githubRepositoriesService.fetchRepositories(authHeader, {
+          per_page: 100,
+          page,
+          type,
+          sort: 'updated',
+          direction: 'desc'
+        });
+
+        allRepos = allRepos.concat(response.repositories);
+        hasMore = response.hasNextPage;
+        page++;
+      }
+
+      return { repositories: allRepos };
+    };
+
+    // Fetch both owned and member repositories
+    const [ownedRepos, memberRepos] = await Promise.all([
+      fetchAllRepositories('owner'),
+      fetchAllRepositories('member')
+    ]);
+
+    // Combine all repositories
+    const allRepos = [...ownedRepos.repositories, ...memberRepos.repositories];
+    
+    // Remove duplicates based on repo ID
+    const uniqueRepos = Array.from(
+      new Map(allRepos.map(repo => [repo.id, repo])).values()
+    );
+
+    // Add detailed permissions for organization repos
+    const reposWithPermissions = await Promise.all(
+      uniqueRepos.map(async (repo) => {
+        try {
+          // For organization repos, fetch detailed permissions
+          if (repo.owner.type === 'Organization') {
+            const repoDetails = await githubRepositoriesService.fetchRepository(authHeader, repo.owner.login, repo.name);
+            return {
+              ...repo,
+              permissions: repoDetails.permissions,
+              owner: {
+                ...repo.owner,
+                type: 'Organization'
+              }
+            };
+          }
+          return {
+            ...repo,
+            owner: {
+              ...repo.owner,
+              type: 'User'
+            }
+          };
+        } catch (error) {
+          console.log(`⚠️ Could not fetch details for ${repo.owner.login}/${repo.name}`);
+          return repo;
+        }
+      })
+    );
+
+    res.json(reposWithPermissions);
+
+  } catch (error) {
+    console.error('❌ Error fetching available repositories:', error);
+
+    if (error instanceof Error) {
+      if (error.message.includes('jwt')) {
+        res.status(401).json({ error: 'Invalid or expired token' });
+        return;
+      }
+      if (error.message.includes('authentication failed')) {
+        res.status(401).json({ error: 'GitHub authentication failed. Please re-authenticate.' });
+        return;
+      }
+      if (error.message.includes('rate limit')) {
+        res.status(429).json({ error: 'GitHub API rate limit exceeded. Please try again later.' });
+        return;
+      }
+
+      res.status(500).json({
+        error: 'Failed to fetch available repositories',
+        message: error.message
+      });
+      return;
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Connect selected repositories
+router.post('/connect', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+    const { repositories } = req.body;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Authorization header is required' });
+      return;
+    }
+
+    if (!repositories || !Array.isArray(repositories)) {
+      res.status(400).json({ error: 'repositories array is required' });
+      return;
+    }
+
+    // Extract JWT token and get user ID
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-jwt-secret') as any;
+    const userId = decoded.userId;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Invalid token: user ID not found' });
+      return;
+    }
+
+    // Connect each repository to the database
+    const connectedRepos = [];
+    for (const repo of repositories) {
+      try {
+        // Fetch repository details from GitHub
+        const repoDetails = await githubRepositoriesService.fetchRepository(authHeader, repo.owner, repo.name);
+        
+        // Save to database
+        const savedRepo = await repositoryService.upsert(userId, repoDetails.id, {
+          repo_name: repoDetails.name,
+          repo_url: repoDetails.html_url,
+          description: repoDetails.description || '',
+          owner: repoDetails.owner,
+          private: repoDetails.private,
+          language: repoDetails.language,
+          stargazers_count: repoDetails.stars,
+          forks_count: repoDetails.forks,
+          permissions: repoDetails.permissions
+        });
+        
+        connectedRepos.push(savedRepo);
+      } catch (error) {
+        console.error(`Failed to connect repository ${repo.owner}/${repo.name}:`, error);
+      }
+    }
+
+    res.json({
+      message: `Successfully connected ${connectedRepos.length} repositories`,
+      repositories: connectedRepos
+    });
+
+  } catch (error) {
+    console.error('❌ Error connecting repositories:', error);
+
+    if (error instanceof Error) {
+      if (error.message.includes('jwt')) {
+        res.status(401).json({ error: 'Invalid or expired token' });
+        return;
+      }
+
+      res.status(500).json({
+        error: 'Failed to connect repositories',
+        message: error.message
+      });
+      return;
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Search repositories
 router.get('/search/:query', async (req: Request, res: Response): Promise<void> => {

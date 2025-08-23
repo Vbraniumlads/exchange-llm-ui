@@ -6,10 +6,11 @@ import TaskManagement from "./TaskManagement";
 import { useAuth } from "@/contexts/AuthContext";
 import { GitHubConnectButton } from "./GitHubConnectButton";
 import { RepositorySearch } from "./RepositorySearch";
+import { ConnectRepositoryModal } from "./ConnectRepositoryModal";
 import { toast } from 'sonner';
 import { githubService } from "../features/github/services/github.service";
 import type { GitHubRepository } from "../features/github/types/github.types";
-import { Eye, Building, User } from 'lucide-react';
+import { Eye, Building, User, Plus } from 'lucide-react';
 
 const VibetorchDashboard: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -21,6 +22,7 @@ const VibetorchDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showGlow, setShowGlow] = useState(false);
   const [showFillAnimation, setShowFillAnimation] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
   
   const sliderRef = useRef<HTMLDivElement>(null);
 
@@ -284,6 +286,11 @@ const VibetorchDashboard: React.FC = () => {
     return null;
   };
 
+  const handleRepositoriesConnected = (newRepos: GitHubRepository[]) => {
+    setRepositories(prev => [...prev, ...newRepos]);
+    setShowConnectModal(false);
+  };
+
   return (
     <div className="h-full font-sans px-4 py-6 sm:p-8 pt-36 sm:pt-20 md:pt-24 space-y-4 sm:space-y-6 md:space-y-8 w-full sm:w-[95%] md:w-[90%] lg:w-[85%] mx-auto">
       {/* Mode description section */}
@@ -380,18 +387,27 @@ const VibetorchDashboard: React.FC = () => {
                 </p>
               </div>
               
-              {/* Repository Search and Sync Button Group */}
+              {/* Repository Search and Action Buttons */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 w-full sm:w-1/2 mt-4 sm:mt-0">
                 <div className="flex-1">
                   <RepositorySearch repositories={repositories} />
                 </div>
-                <button 
-                  onClick={syncRepositories} 
-                  disabled={isLoading}
-                  className="px-4 py-3 sm:py-2 text-sm bg-muted hover:bg-muted-foreground/20 text-foreground rounded-sm transition-colors whitespace-nowrap min-h-[44px] sm:min-h-auto"
-                >
-                  {isLoading ? 'Syncing...' : 'Sync Repos'}
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setShowConnectModal(true)}
+                    className="px-4 py-3 sm:py-2 text-sm bg-cta-500 hover:bg-cta-600 text-white rounded-sm transition-colors whitespace-nowrap min-h-[44px] sm:min-h-auto flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Connect
+                  </button>
+                  <button 
+                    onClick={syncRepositories} 
+                    disabled={isLoading}
+                    className="px-4 py-3 sm:py-2 text-sm bg-muted hover:bg-muted-foreground/20 text-foreground rounded-sm transition-colors whitespace-nowrap min-h-[44px] sm:min-h-auto"
+                  >
+                    {isLoading ? 'Syncing...' : 'Sync'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -505,6 +521,14 @@ const VibetorchDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Connect Repository Modal */}
+      <ConnectRepositoryModal
+        isOpen={showConnectModal}
+        onClose={() => setShowConnectModal(false)}
+        onConnect={handleRepositoriesConnected}
+        existingRepositories={repositories}
+      />
     </div>
   );
 };
