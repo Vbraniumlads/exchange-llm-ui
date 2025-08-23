@@ -158,6 +158,13 @@ export function ConnectRepositoryModal({
 
         {/* Filters */}
         <div className="p-6 border-b border-border space-y-4">
+          {/* Info message about repository limits */}
+          {repositories.length >= 100 && (
+            <div className="p-3 bg-muted/50 rounded-md text-sm text-muted-foreground">
+              <p>Showing {repositories.length} repositories. If you don't see all your repositories, try using the search or filter by owner.</p>
+            </div>
+          )}
+          
           <div className="flex flex-col sm:flex-row gap-4">
             {/* Search Input */}
             <div className="relative flex-1">

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { githubRepositoriesService } from '../services/githubRepositoriesService.js';
 import { repositoryService } from '../services/repositoryService.js';
 import jwt from 'jsonwebtoken';
+import axios from 'axios';
 
 const router = Router();
 
@@ -70,18 +71,17 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Fetch both personal and organization repositories where user has push access
-    // Get multiple pages to fetch more than 100 repositories
-    const fetchAllRepositories = async (type: 'owner' | 'member') => {
+    // Fetch all accessible repositories
+    const fetchAllRepositories = async () => {
       let allRepos: any[] = [];
       let page = 1;
       let hasMore = true;
 
-      while (hasMore && page <= 5) { // Limit to 5 pages (500 repos max)
+      while (hasMore && page <= 10) { // Limit to 10 pages (1000 repos max)
         const response = await githubRepositoriesService.fetchRepositories(authHeader, {
           per_page: 100,
           page,
-          type,
+          type: 'all',
           sort: 'updated',
           direction: 'desc'
         });
@@ -91,38 +91,17 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
         page++;
       }
 
-      return { repositories: allRepos };
+      return allRepos;
     };
 
-    const [ownedRepos, memberRepos] = await Promise.all([
-      fetchAllRepositories('owner'),
-      fetchAllRepositories('member')
-    ]);
+    const allRepos = await fetchAllRepositories();
+    
+    // Remove duplicates
+    const uniqueRepos = Array.from(
+      new Map(allRepos.map(repo => [repo.id, repo])).values()
+    );
 
-    // Combine both sets of repositories
-    const allRepos = [...ownedRepos.repositories, ...memberRepos.repositories];
-
-    // Filter organization repos to only include those where user has push/maintain access
-    const filteredRepos = [];
-    for (const repo of allRepos) {
-      // For owned repos, always include
-      if (ownedRepos.repositories.includes(repo)) {
-        filteredRepos.push(repo);
-      } else {
-        // For organization repos, check permissions
-        try {
-          const repoDetails = await githubRepositoriesService.fetchRepository(authHeader, repo.owner.login, repo.name);
-          // Include if user has push access (maintainer/admin permissions)
-          if (repoDetails.permissions?.push || repoDetails.permissions?.maintain || repoDetails.permissions?.admin) {
-            filteredRepos.push(repo);
-          }
-        } catch (error) {
-          console.log(`⚠️ Could not check permissions for ${repo.owner.login}/${repo.name}, skipping`);
-        }
-      }
-    }
-
-    const githubRepos = { repositories: filteredRepos };
+    const githubRepos = { repositories: uniqueRepos };
 
     // Sync each repository to database
     const syncedRepos = [];
@@ -448,16 +427,16 @@ router.get('/available', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Fetch all repositories from GitHub (personal and organizations)
-    const fetchAllRepositories = async (type: 'owner' | 'member') => {
+    const fetchAllRepositories = async () => {
       let allRepos: any[] = [];
       let page = 1;
       let hasMore = true;
 
-      while (hasMore && page <= 10) { // Fetch up to 10 pages (1000 repos)
+      while (hasMore && page <= 15) { // Fetch up to 15 pages (1500 repos)
         const response = await githubRepositoriesService.fetchRepositories(authHeader, {
           per_page: 100,
           page,
-          type,
+          type: 'all',  // This gets all repos (owner, member, collaborator)
           sort: 'updated',
           direction: 'desc'
         });
@@ -467,54 +446,138 @@ router.get('/available', async (req: Request, res: Response): Promise<void> => {
         page++;
       }
 
-      return { repositories: allRepos };
+      return allRepos;
     };
 
-    // Fetch both owned and member repositories
-    const [ownedRepos, memberRepos] = await Promise.all([
-      fetchAllRepositories('owner'),
-      fetchAllRepositories('member')
+    // Fetch repositories where user is a collaborator (not owner)
+    const fetchCollaboratorRepositories = async () => {
+      try {
+        let allCollabRepos: any[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore && page <= 5) {
+          const response = await githubRepositoriesService.fetchRepositories(authHeader, {
+            per_page: 100,
+            page,
+            type: 'member',  // This gets repos where user is a collaborator
+            sort: 'updated',
+            direction: 'desc'
+          });
+
+          allCollabRepos = allCollabRepos.concat(response.repositories);
+          hasMore = response.hasNextPage;
+          page++;
+        }
+
+        return allCollabRepos;
+      } catch (error) {
+        console.log('Failed to fetch collaborator repositories:', error);
+        return [];
+      }
+    };
+
+    // Also fetch repositories from organizations the user is a member of
+    const fetchOrgRepositories = async () => {
+      try {
+        // First get user's organizations
+        const orgsResponse = await axios.get(
+          'https://api.github.com/user/orgs',
+          {
+            headers: {
+              'Authorization': authHeader,
+              'Accept': 'application/vnd.github.v3+json',
+            }
+          }
+        );
+
+        const orgRepos: any[] = [];
+        
+        // For each organization, fetch its repositories
+        for (const org of orgsResponse.data) {
+          try {
+            let page = 1;
+            let hasMore = true;
+            
+            while (hasMore && page <= 5) { // Limit pages per org
+              const reposResponse = await axios.get(
+                `https://api.github.com/orgs/${org.login}/repos`,
+                {
+                  headers: {
+                    'Authorization': authHeader,
+                    'Accept': 'application/vnd.github.v3+json',
+                  },
+                  params: {
+                    per_page: 100,
+                    page,
+                    type: 'all'
+                  }
+                }
+              );
+              
+              // Transform and add org repos (simplified transform since we can't access private method)
+              const transformedRepos = reposResponse.data.map((repo: any) => ({
+                id: repo.id,
+                name: repo.name,
+                full_name: repo.full_name,
+                html_url: repo.html_url,
+                description: repo.description,
+                stars: repo.stargazers_count,
+                forks: repo.forks_count,
+                language: repo.language,
+                updated_at: repo.updated_at,
+                private: repo.private,
+                owner: {
+                  login: repo.owner.login,
+                  id: repo.owner.id,
+                  avatar_url: repo.owner.avatar_url,
+                  type: repo.owner.type,
+                },
+                permissions: repo.permissions
+              }));
+              orgRepos.push(...transformedRepos);
+              
+              hasMore = reposResponse.headers.link?.includes('rel="next"') || false;
+              page++;
+            }
+          } catch (error) {
+            console.log(`Failed to fetch repos for org ${org.login}:`, error);
+          }
+        }
+        
+        return orgRepos;
+      } catch (error) {
+        console.log('Failed to fetch organizations:', error);
+        return [];
+      }
+    };
+
+    // Fetch all types of repositories in parallel
+    const [userRepos, collabRepos, orgRepos] = await Promise.all([
+      fetchAllRepositories(),
+      fetchCollaboratorRepositories(),
+      fetchOrgRepositories()
     ]);
 
     // Combine all repositories
-    const allRepos = [...ownedRepos.repositories, ...memberRepos.repositories];
+    const allRepos = [...userRepos, ...collabRepos, ...orgRepos];
     
     // Remove duplicates based on repo ID
     const uniqueRepos = Array.from(
       new Map(allRepos.map(repo => [repo.id, repo])).values()
     );
 
-    // Add detailed permissions for organization repos
-    const reposWithPermissions = await Promise.all(
-      uniqueRepos.map(async (repo) => {
-        try {
-          // For organization repos, fetch detailed permissions
-          if (repo.owner.type === 'Organization') {
-            const repoDetails = await githubRepositoriesService.fetchRepository(authHeader, repo.owner.login, repo.name);
-            return {
-              ...repo,
-              permissions: repoDetails.permissions,
-              owner: {
-                ...repo.owner,
-                type: 'Organization'
-              }
-            };
-          }
-          return {
-            ...repo,
-            owner: {
-              ...repo.owner,
-              type: 'User'
-            }
-          };
-        } catch (error) {
-          console.log(`⚠️ Could not fetch details for ${repo.owner.login}/${repo.name}`);
-          return repo;
-        }
-      })
-    );
+    // Simply return the repos with their existing permissions
+    // The permissions are already included from the API responses
+    const reposWithTypes = uniqueRepos.map(repo => ({
+      ...repo,
+      owner: {
+        ...repo.owner,
+        type: repo.owner?.type || 'User'
+      }
+    }));
 
-    res.json(reposWithPermissions);
+    res.json(reposWithTypes);
 
   } catch (error) {
     console.error('❌ Error fetching available repositories:', error);
