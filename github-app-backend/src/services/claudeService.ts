@@ -38,6 +38,7 @@ class ClaudeService {
       await dispatchWorkflow({
         owner: repository.owner.login,
         repo: repository.name,
+        repositoryId: repository.id,
         workflowId: 'claude.yml',
         ref: 'main',
         inputs: {
