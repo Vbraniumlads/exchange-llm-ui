@@ -5,22 +5,19 @@ export const workflowDispatchRouter = Router();
 
 /**
  * POST /api/workflows/dispatch
- * Body: { owner, repo, workflowId, ref?, inputs? }
+ * Body: { owner, repo, workflowId, ref?, inputs?, repositoryId? }
  * Requires GitHub App to be installed on target repo. Server uses app installation token.
  */
 workflowDispatchRouter.post('/dispatch', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { owner, repo, workflowId, ref, inputs } = req.body || {};
+    const { owner, repo, workflowId, ref, inputs, repositoryId } = req.body || {};
 
-    if (!owner || !repo || !workflowId) {
-      res.status(400).json({ error: 'Missing required fields: owner, repo, workflowId' });
+    if (!owner || !repo || !workflowId || !repositoryId) {
+      res.status(400).json({ error: 'Missing required fields: owner, repo, workflowId, repositoryId' });
       return;
     }
 
-    // Get user ID from request (in a real app, this would come from JWT token)
-    const userId = parseInt(req.query.user_id as string) || parseInt(req.headers['x-user-id'] as string) || 1;
-
-    console.log(`🚀 Workflow dispatch requested by user ${userId}: ${owner}/${repo} (${workflowId})`);
+    console.log(`🚀 Workflow dispatch requested for ${owner}/${repo} (${workflowId})`);
 
     const result = await dispatchWorkflow({
       owner,
@@ -28,7 +25,7 @@ workflowDispatchRouter.post('/dispatch', async (req: Request, res: Response): Pr
       workflowId,
       ref,
       inputs,
-      userId
+      repositoryId
     });
 
     // Return immediate response with task tracking information
@@ -41,7 +38,7 @@ workflowDispatchRouter.post('/dispatch', async (req: Request, res: Response): Pr
       tracking: {
         repository: `${owner}/${repo}`,
         workflow: workflowId,
-        user_id: userId
+        repository_id: repositoryId
       }
     });
 

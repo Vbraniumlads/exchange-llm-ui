@@ -7,6 +7,7 @@ import { cloudRunTrigger } from './cloudRunTrigger.js';
 export interface WorkflowDispatchParams {
   owner: string;
   repo: string;
+  repositoryId: number;
   workflowId: string; // e.g. 'claude.yml'
   ref?: string; // e.g. 'main'
   inputs?: Record<string, any>;
@@ -88,34 +89,18 @@ export async function createRepositoryClient(owner: string, repo: string): Promi
   });
 }
 
-export async function dispatchWorkflow(params: WorkflowDispatchParams & { userId?: number }): Promise<{
+export async function dispatchWorkflow(params: WorkflowDispatchParams): Promise<{
   success: boolean;
   message: string;
   task_id: number;
   local_task_id: number;
   status_endpoint: string;
 }> {
-  const { owner, repo, workflowId, ref = 'main', inputs = {}, userId = 1 } = params;
+  const { owner, repo, workflowId, ref = 'main', inputs = {}, repositoryId } = params;
 
   // Only handle Claude workflows
   if (workflowId !== 'claude.yml' || !inputs.context) {
     throw new Error('Only Claude workflows are supported. Please use claude.yml with a context input.');
-  }
-
-  // Get or create repository record
-  let repositoryId: number;
-  try {
-    const repos = await repositoryService.findByUserId(userId);
-    let repo_record = repos.find(r => r.repo_name === `${owner}/${repo}`);
-
-    if (!repo_record) {
-      throw new Error('Repository not found');
-    }
-
-    repositoryId = repo_record.id;
-  } catch (error) {
-    console.error('Failed to get/create repository record:', error);
-    throw new Error('Failed to prepare task tracking');
   }
 
   // Get GitHub App configuration for Cloud Run

@@ -109,13 +109,20 @@ export default function RepositoryDetail() {
   };
 
   const handleRunWorkflowForIssue = async (issueNumber: number) => {
-    if (!owner || !repo) return;
+    if (!owner || !repo || !repository) return;
     setDispatchingIssues(prev => new Set(prev).add(issueNumber));
     try {
-      await githubService.dispatchWorkflow(owner, repo, 'claude.yml', {
-        action_type: 'create-pr',
-        context: issues.find(i => i.number === issueNumber)?.body || '',
-      });
+      await githubService.dispatchWorkflow(
+        owner, 
+        repo, 
+        repository.id,
+        'claude.yml', 
+        {
+          action_type: 'create-pr',
+          context: issues.find(i => i.number === issueNumber)?.body || '',
+        },
+        'main',
+      );
       toast.success(`Workflow dispatched for issue #${issueNumber}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to dispatch workflow';

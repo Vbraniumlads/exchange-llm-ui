@@ -19,14 +19,14 @@ export class GitHubService {
   async syncRepositories(): Promise<SyncResponse> {
     // Clear repositories cache when syncing
     cacheService.clear('repositories');
-    
+
     const result = await apiClient.post<SyncResponse>('/repositories/sync');
-    
+
     // Cache the new repositories data
     if (result.repositories) {
       cacheService.set(this.CACHE_KEYS.REPOSITORIES, result.repositories);
     }
-    
+
     return result;
   }
 
@@ -42,14 +42,14 @@ export class GitHubService {
   async connectRepositories(repositories: Array<{ owner: string; name: string }>): Promise<SyncResponse> {
     // Clear repositories cache when connecting new repositories
     cacheService.clear('repositories');
-    
+
     const result = await apiClient.post<SyncResponse>('/repositories/connect', { repositories });
-    
+
     // Cache the new repositories data
     if (result.repositories) {
       cacheService.set(this.CACHE_KEYS.REPOSITORIES, result.repositories);
     }
-    
+
     return result;
   }
 
@@ -142,13 +142,16 @@ export class GitHubService {
   async dispatchWorkflow(
     owner: string,
     repo: string,
+    repositoryId: number,
     workflowId: string,
     inputs: Record<string, any> = {},
     ref: string = 'main'
   ): Promise<{ success: boolean; message: string }> {
+    const payload: any = { owner, repo, repositoryId, workflowId, ref, inputs };
+
     return apiClient.post<{ success: boolean; message: string }>(
       '/workflows/dispatch',
-      { owner, repo, workflowId, ref, inputs }
+      payload
     );
   }
 

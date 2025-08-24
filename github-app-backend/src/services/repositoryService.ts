@@ -98,6 +98,15 @@ class RepositoryService {
     return result.rows[0] ? this.transformDbRow(result.rows[0]) : null;
   }
 
+  async findByRepositoryId(repositoryId: number): Promise<Repository | null> {
+    const query = `
+      SELECT * FROM repositories 
+      WHERE github_repo_id = $1
+    `;
+    const result = await this.pool.query(query, [repositoryId]);
+    return result.rows[0] ? this.transformDbRow(result.rows[0]) : null;
+  }
+
   async create(data: any): Promise<Repository> {
     const query = `
       INSERT INTO repositories (
