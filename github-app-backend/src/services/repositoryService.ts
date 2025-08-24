@@ -1,131 +1,114 @@
-import Database from 'better-sqlite3';
+import { Pool } from 'pg';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { config } from 'dotenv';
 import { Repository, RepositoryCreateInput, RepositoryUpdateInput } from '../db/models/Repository.js';
 import type { GitHubRepository, Todo } from '../types/index.js';
+
+// Load environment variables
+config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 class RepositoryService {
-  private db: Database.Database;
+  private pool: Pool;
 
   constructor() {
-    // Use absolute path for database file to ensure it works in both dev and production
-    const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'database.sqlite');
-    console.log('🗄️  Database path:', dbPath);
-    
-    this.db = new Database(dbPath);
+    const connectionString = process.env.DATABASE_URL;
+
+    if (!connectionString) {
+      throw new Error('DATABASE_URL environment variable is not set');
+    }
+
+    console.log('🗄️  Connecting to PostgreSQL database...');
+
+    this.pool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false }, // Required for Railway and most cloud PostgreSQL
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+    });
+
     this.initDatabase();
   }
 
-  private initDatabase(): void {
-    console.log('🚀 Initializing database...');
-    
-    // Run migrations - try multiple possible paths
-    const migrationFiles = ['001_create_repositories.sql', '002_add_repository_fields.sql'];
-    const possibleMigrationDirs = [
-      path.join(__dirname, '../db/migrations'),
-      path.join(process.cwd(), 'src/db/migrations'),
-      path.join(process.cwd(), 'dist/db/migrations'),
-    ];
-    
-    let migrationsExecuted = 0;
-    
-    for (const migrationFile of migrationFiles) {
-      let migrationExecuted = false;
-      
-      for (const migrationDir of possibleMigrationDirs) {
-        const migrationPath = path.join(migrationDir, migrationFile);
-        console.log('🔍 Checking migration path:', migrationPath);
-        
-        if (fs.existsSync(migrationPath)) {
-          console.log(`✅ Found migration file ${migrationFile}, executing...`);
-          const migration = fs.readFileSync(migrationPath, 'utf8');
-          
-          try {
-            this.db.exec(migration);
-            migrationExecuted = true;
-            migrationsExecuted++;
-            break;
-          } catch (error) {
-            // Migration might fail if columns already exist (for 002 migration)
-            if (migrationFile === '002_add_repository_fields.sql') {
-              console.log('⚠️  Migration 002 may have already been applied, continuing...');
-              migrationExecuted = true;
-              migrationsExecuted++;
-              break;
-            }
-            throw error;
+  private async initDatabase(): Promise<void> {
+    console.log('🚀 Initializing PostgreSQL database...');
+
+    try {
+      // Test connection
+      const client = await this.pool.connect();
+      console.log('✅ Successfully connected to PostgreSQL');
+
+      // Run migration
+      const migrationPath = path.join(__dirname, '../db/migrations/001_create_repositories_pg.sql');
+
+      if (fs.existsSync(migrationPath)) {
+        console.log('📦 Running migration:', migrationPath);
+        const migration = fs.readFileSync(migrationPath, 'utf8');
+
+        // Execute the entire migration as one statement to handle functions properly
+        try {
+          await client.query(migration);
+          console.log('✅ Migration executed successfully');
+        } catch (error: any) {
+          if (error.code === '42P07') { // Table already exists
+            console.log('⚠️  Table already exists, skipping migration');
+          } else if (error.code === '42710') { // Duplicate object
+            console.log('⚠️  Objects already exist, skipping migration');
+          } else if (error.message.includes('already exists')) {
+            console.log('⚠️  Database objects already exist');
+          } else {
+            console.error('❌ Migration error:', error.message);
           }
         }
-      }
-      
-      if (!migrationExecuted && migrationFile === '001_create_repositories.sql') {
-        // Only fail if the first migration is not found
-        break;
-      }
-    }
-    
-    if (migrationsExecuted === 0) {
-      console.log('⚠️  Migration file not found, creating table manually...');
-      // Fallback: create table directly if migration file is not found
-      this.db.exec(`
-        -- Create repositories table
-        CREATE TABLE IF NOT EXISTS repositories (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER NOT NULL,
-          github_repo_id INTEGER NOT NULL, -- GitHub's repository ID
-          repo_name TEXT NOT NULL,
-          repo_url TEXT NOT NULL,
-          description TEXT,
-          last_synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(user_id, github_repo_id) -- Prevent duplicate repos per user
-        );
 
-        -- Create index for faster queries
-        CREATE INDEX IF NOT EXISTS idx_repositories_user_id ON repositories(user_id);
-        CREATE INDEX IF NOT EXISTS idx_repositories_last_synced ON repositories(last_synced_at);
-      `);
+        console.log('✅ Migration completed');
+      } else {
+        console.log('⚠️  Migration file not found, assuming database is already set up');
+      }
+
+      client.release();
+      console.log('✅ Database initialization complete');
+    } catch (error) {
+      console.error('❌ Failed to initialize database:', error);
+      throw error;
     }
-    
-    console.log('✅ Database initialization complete');
   }
 
   async findByUserId(userId: number): Promise<Repository[]> {
-    const stmt = this.db.prepare(`
+    const query = `
       SELECT * FROM repositories 
-      WHERE user_id = ?
+      WHERE user_id = $1
       ORDER BY last_synced_at DESC
-    `);
-    const rows = stmt.all(userId) as any[];
-    return rows.map(row => this.transformDbRow(row));
+    `;
+    const result = await this.pool.query(query, [userId]);
+    return result.rows.map(row => this.transformDbRow(row));
   }
 
   async findByUserIdAndGithubId(userId: number, githubRepoId: number): Promise<Repository | null> {
-    const stmt = this.db.prepare(`
+    const query = `
       SELECT * FROM repositories 
-      WHERE user_id = ? AND github_repo_id = ?
-    `);
-    const result = stmt.get(userId, githubRepoId) as any;
-    return result ? this.transformDbRow(result) : null;
+      WHERE user_id = $1 AND github_repo_id = $2
+    `;
+    const result = await this.pool.query(query, [userId, githubRepoId]);
+    return result.rows[0] ? this.transformDbRow(result.rows[0]) : null;
   }
 
   async create(data: any): Promise<Repository> {
-    const now = new Date().toISOString();
-    const stmt = this.db.prepare(`
+    const query = `
       INSERT INTO repositories (
         user_id, github_repo_id, repo_name, repo_url, description, 
         owner_login, owner_type, owner_avatar_url,
-        is_private, language, stargazers_count, forks_count, permissions,
-        last_synced_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+        is_private, language, stargazers_count, forks_count, permissions
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+    `;
 
-    const result = stmt.run(
+    const values = [
       data.user_id,
       data.github_repo_id,
       data.repo_name,
@@ -134,84 +117,82 @@ class RepositoryService {
       data.owner?.login || null,
       data.owner?.type || null,
       data.owner?.avatar_url || null,
-      data.private ? 1 : 0,
+      data.private || false,
       data.language || null,
       data.stargazers_count || 0,
       data.forks_count || 0,
-      data.permissions ? JSON.stringify(data.permissions) : null,
-      now,
-      now,
-      now
-    );
+      data.permissions || null
+    ];
 
-    return this.findById(Number(result.lastInsertRowid))!;
+    const result = await this.pool.query(query, values);
+    return this.transformDbRow(result.rows[0]);
   }
 
   async update(id: number, data: any): Promise<Repository | null> {
     const updates: string[] = [];
     const values: any[] = [];
+    let paramCounter = 1;
 
     if (data.repo_name !== undefined) {
-      updates.push('repo_name = ?');
+      updates.push(`repo_name = $${paramCounter++}`);
       values.push(data.repo_name);
     }
     if (data.repo_url !== undefined) {
-      updates.push('repo_url = ?');
+      updates.push(`repo_url = $${paramCounter++}`);
       values.push(data.repo_url);
     }
     if (data.description !== undefined) {
-      updates.push('description = ?');
+      updates.push(`description = $${paramCounter++}`);
       values.push(data.description);
     }
     if (data.last_synced_at !== undefined) {
-      updates.push('last_synced_at = ?');
+      updates.push(`last_synced_at = $${paramCounter++}`);
       values.push(data.last_synced_at);
     }
     if (data.owner !== undefined) {
-      updates.push('owner_login = ?');
+      updates.push(`owner_login = $${paramCounter++}`);
       values.push(data.owner?.login || null);
-      updates.push('owner_type = ?');
+      updates.push(`owner_type = $${paramCounter++}`);
       values.push(data.owner?.type || null);
-      updates.push('owner_avatar_url = ?');
+      updates.push(`owner_avatar_url = $${paramCounter++}`);
       values.push(data.owner?.avatar_url || null);
     }
     if (data.private !== undefined) {
-      updates.push('is_private = ?');
-      values.push(data.private ? 1 : 0);
+      updates.push(`is_private = $${paramCounter++}`);
+      values.push(data.private);
     }
     if (data.language !== undefined) {
-      updates.push('language = ?');
+      updates.push(`language = $${paramCounter++}`);
       values.push(data.language);
     }
     if (data.stargazers_count !== undefined) {
-      updates.push('stargazers_count = ?');
+      updates.push(`stargazers_count = $${paramCounter++}`);
       values.push(data.stargazers_count);
     }
     if (data.forks_count !== undefined) {
-      updates.push('forks_count = ?');
+      updates.push(`forks_count = $${paramCounter++}`);
       values.push(data.forks_count);
     }
     if (data.permissions !== undefined) {
-      updates.push('permissions = ?');
-      values.push(data.permissions ? JSON.stringify(data.permissions) : null);
+      updates.push(`permissions = $${paramCounter++}`);
+      values.push(data.permissions);
     }
 
     if (updates.length === 0) {
       return this.findById(id);
     }
 
-    updates.push('updated_at = ?');
-    values.push(new Date().toISOString());
     values.push(id);
 
-    const stmt = this.db.prepare(`
+    const query = `
       UPDATE repositories 
       SET ${updates.join(', ')}
-      WHERE id = ?
-    `);
+      WHERE id = $${paramCounter}
+      RETURNING *
+    `;
 
-    stmt.run(...values);
-    return this.findById(id);
+    const result = await this.pool.query(query, values);
+    return result.rows[0] ? this.transformDbRow(result.rows[0]) : null;
   }
 
   async upsert(userId: number, githubRepoId: number, data: any): Promise<Repository> {
@@ -236,17 +217,14 @@ class RepositoryService {
   }
 
   async deleteByUserId(userId: number): Promise<void> {
-    const stmt = this.db.prepare('DELETE FROM repositories WHERE user_id = ?');
-    stmt.run(userId);
+    const query = 'DELETE FROM repositories WHERE user_id = $1';
+    await this.pool.query(query, [userId]);
   }
 
-  private findById(id: number): Repository | null {
-    const stmt = this.db.prepare('SELECT * FROM repositories WHERE id = ?');
-    const result = stmt.get(id) as any;
-    if (!result) return null;
-    
-    // Transform database row to Repository object
-    return this.transformDbRow(result);
+  private async findById(id: number): Promise<Repository | null> {
+    const query = 'SELECT * FROM repositories WHERE id = $1';
+    const result = await this.pool.query(query, [id]);
+    return result.rows[0] ? this.transformDbRow(result.rows[0]) : null;
   }
 
   private transformDbRow(row: any): Repository {
@@ -257,13 +235,13 @@ class RepositoryService {
         type: row.owner_type,
         avatar_url: row.owner_avatar_url
       } : undefined,
-      private: row.is_private === 1,
-      permissions: row.permissions ? JSON.parse(row.permissions) : undefined
+      private: row.is_private,
+      permissions: row.permissions
     };
   }
 
-  close(): void {
-    this.db.close();
+  async close(): Promise<void> {
+    await this.pool.end();
   }
 
   /**
@@ -282,7 +260,7 @@ class RepositoryService {
     console.log(
       `🧱 [repositoryService] Requested implementation repo for "${summary}" from ${sourceRepository.full_name}`
     );
-    // Future: use Octokit to create repo and store record in SQLite
+    // Future: use Octokit to create repo and store record in PostgreSQL
   }
 }
 

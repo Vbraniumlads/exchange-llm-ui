@@ -71,13 +71,23 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Set a timeout for the entire operation (30 seconds)
+    const timeout = setTimeout(() => {
+      if (!res.headersSent) {
+        res.status(504).json({ 
+          error: 'Sync operation timed out. Please try again with fewer repositories.' 
+        });
+      }
+    }, 30000);
+
     // Fetch all accessible repositories
     const fetchAllRepositories = async () => {
       let allRepos: any[] = [];
       let page = 1;
       let hasMore = true;
+      const maxPages = req.body.maxPages || 5; // Allow client to limit pages, default to 5 (500 repos)
 
-      while (hasMore && page <= 10) { // Limit to 10 pages (1000 repos max)
+      while (hasMore && page <= maxPages) {
         const response = await githubRepositoriesService.fetchRepositories(authHeader, {
           per_page: 100,
           page,
@@ -103,23 +113,37 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
 
     const githubRepos = { repositories: uniqueRepos };
 
-    // Sync each repository to database
+    // Sync repositories to database in parallel batches
+    const BATCH_SIZE = 10; // Process 10 repositories at a time
     const syncedRepos = [];
-    for (const githubRepo of githubRepos.repositories) {
-      const syncedRepo = await repositoryService.upsert(userId, githubRepo.id, {
-        repo_name: githubRepo.name,
-        repo_url: githubRepo.html_url,
-        description: githubRepo.description || '',
-        owner: githubRepo.owner,
-        private: githubRepo.private,
-        language: githubRepo.language,
-        stargazers_count: githubRepo.stars,
-        forks_count: githubRepo.forks,
-        permissions: githubRepo.permissions
-      });
-      syncedRepos.push(syncedRepo);
+    
+    for (let i = 0; i < githubRepos.repositories.length; i += BATCH_SIZE) {
+      const batch = githubRepos.repositories.slice(i, i + BATCH_SIZE);
+      
+      const batchPromises = batch.map(githubRepo => 
+        repositoryService.upsert(userId, githubRepo.id, {
+          repo_name: githubRepo.name,
+          repo_url: githubRepo.html_url,
+          description: githubRepo.description || '',
+          owner: githubRepo.owner,
+          private: githubRepo.private,
+          language: githubRepo.language,
+          stargazers_count: githubRepo.stars,
+          forks_count: githubRepo.forks,
+          permissions: githubRepo.permissions
+        }).catch(error => {
+          console.error(`Failed to sync repo ${githubRepo.name}:`, error.message);
+          return null;
+        })
+      );
+      
+      const batchResults = await Promise.all(batchPromises);
+      syncedRepos.push(...batchResults.filter(repo => repo !== null));
     }
 
+    // Clear timeout if operation completed
+    clearTimeout(timeout);
+    
     res.json({
       message: `Successfully synced ${syncedRepos.length} repositories`,
       repositories: syncedRepos

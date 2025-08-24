@@ -45,19 +45,9 @@ const VibetorchDashboard: React.FC = () => {
       const repos = await githubService.getRepositories();
       setRepositories(repos);
     } catch (error) {
-      // If no repositories are found, try to sync them automatically
-      if (error instanceof Error && error.message.includes('Failed to fetch repositories')) {
-        console.log('🔄 No repositories found, attempting automatic sync...');
-        try {
-          const syncResult = await githubService.syncRepositories();
-          setRepositories(syncResult.repositories);
-          toast.success('Repositories synced successfully!');
-        } catch (syncErr) {
-          console.error('Failed to sync repositories:', syncErr);
-          toast.error('Failed to load repositories');
-        }
-      } else {
-        console.error('Failed to fetch repositories:', error);
+      console.error('Failed to fetch repositories:', error);
+      setRepositories([]);
+      if (!error?.message?.includes('Failed to fetch repositories')) {
         toast.error('Failed to load repositories');
       }
     } finally {

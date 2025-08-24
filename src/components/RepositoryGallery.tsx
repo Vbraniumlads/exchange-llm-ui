@@ -31,25 +31,13 @@ export function RepositoryGallery({ onRepositorySelect }: RepositoryGalleryProps
         setRepositories(repos);
         setFilteredRepos(repos);
       } catch (err) {
-        // If no repositories are found, try to sync them automatically
-        if (err instanceof Error && err.message.includes('Failed to fetch repositories')) {
-          console.log('🔄 No repositories found, attempting automatic sync...');
-          try {
-            const syncResult = await githubService.syncRepositories();
-            setRepositories(syncResult.repositories);
-            setFilteredRepos(syncResult.repositories);
-            toast.success('Repositories synced successfully!');
-          } catch (syncErr) {
-            const errorMessage = syncErr instanceof Error ? syncErr.message : 'Failed to sync repositories';
-            setError(errorMessage);
-            toast.error(errorMessage);
-            console.error('Error syncing repositories:', syncErr);
-          }
-        } else {
+        console.error('Error fetching repositories:', err);
+        setRepositories([]);
+        setFilteredRepos([]);
+        if (!err?.message?.includes('Failed to fetch repositories')) {
           const errorMessage = err instanceof Error ? err.message : 'Failed to fetch repositories';
           setError(errorMessage);
           toast.error(errorMessage);
-          console.error('Error fetching repositories:', err);
         }
       } finally {
         setIsLoading(false);
@@ -65,7 +53,8 @@ export function RepositoryGallery({ onRepositorySelect }: RepositoryGalleryProps
   useEffect(() => {
     const filtered = repositories.filter(repo =>
       repo.repo_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      repo.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      repo.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      repo.owner?.login?.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredRepos(filtered);
   }, [searchQuery, repositories]);

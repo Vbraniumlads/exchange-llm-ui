@@ -38,7 +38,8 @@
       "Bash(GITHUB_APP_ID=1734153 ./deploy.sh)",
       "Bash(open:*)",
       "Bash(docker:*)",
-      "Bash(gcloud run services describe:*)"
+      "Bash(gcloud run services describe:*)",
+      "Bash(timeout 5 npm run dev)"
     ],
     "deny": []
   }
