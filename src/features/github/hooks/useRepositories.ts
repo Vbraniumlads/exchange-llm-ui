@@ -77,7 +77,8 @@ export function useRepositories() {
       const searchTerm = state.filters.search.toLowerCase();
       filtered = filtered.filter(repo =>
         repo.repo_name.toLowerCase().includes(searchTerm) ||
-        repo.description?.toLowerCase().includes(searchTerm)
+        repo.description?.toLowerCase().includes(searchTerm) ||
+        repo.owner?.login?.toLowerCase().includes(searchTerm)
       );
     }
 

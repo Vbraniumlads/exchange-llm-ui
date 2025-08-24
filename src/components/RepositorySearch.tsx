@@ -22,7 +22,8 @@ export function RepositorySearch({ repositories, className = '' }: RepositorySea
     const searchTerm = query.trim().toLowerCase();
     return repositories.filter(repo =>
       repo.repo_name.toLowerCase().includes(searchTerm) ||
-      repo.description?.toLowerCase().includes(searchTerm)
+      repo.description?.toLowerCase().includes(searchTerm) ||
+      repo.owner?.login?.toLowerCase().includes(searchTerm)
     );
   }, [repositories, query]);
 
@@ -62,7 +63,7 @@ export function RepositorySearch({ repositories, className = '' }: RepositorySea
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
             type="text"
-            placeholder="Search repositories..."
+            placeholder="Search by name, description, or owner..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-10 min-h-[44px] rounded-sm text-sm sm:text-base bg-transparent border-border focus:border-foreground"

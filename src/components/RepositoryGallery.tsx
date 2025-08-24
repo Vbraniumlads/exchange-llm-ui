@@ -53,7 +53,8 @@ export function RepositoryGallery({ onRepositorySelect }: RepositoryGalleryProps
   useEffect(() => {
     const filtered = repositories.filter(repo =>
       repo.repo_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      repo.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      repo.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      repo.owner?.login?.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredRepos(filtered);
   }, [searchQuery, repositories]);
