@@ -1,21 +1,56 @@
 import { apiClient } from '../../../shared/services/api.service';
+import { cacheService } from '../../../shared/services/cache.service';
 import type { GitHubRepository, SyncResponse, GitHubIssue, GitHubPullRequest, GitHubComment } from '../types/github.types';
 
 export class GitHubService {
+  private readonly CACHE_KEYS = {
+    REPOSITORIES: 'repositories',
+    ALL_REPOSITORIES: 'all_repositories'
+  };
+
   async getRepositories(): Promise<GitHubRepository[]> {
-    return apiClient.get<GitHubRepository[]>('/repositories');
+    // Use cache service's withCache helper for cleaner code
+    return cacheService.withCache(
+      this.CACHE_KEYS.REPOSITORIES,
+      () => apiClient.get<GitHubRepository[]>('/repositories')
+    );
   }
 
   async syncRepositories(): Promise<SyncResponse> {
-    return apiClient.post<SyncResponse>('/repositories/sync');
+    // Clear repositories cache when syncing
+    cacheService.clear('repositories');
+    
+    const result = await apiClient.post<SyncResponse>('/repositories/sync');
+    
+    // Cache the new repositories data
+    if (result.repositories) {
+      cacheService.set(this.CACHE_KEYS.REPOSITORIES, result.repositories);
+    }
+    
+    return result;
   }
 
   async getAllRepositories(): Promise<GitHubRepository[]> {
-    return apiClient.get<GitHubRepository[]>('/repositories/available');
+    // Cache available repositories with a shorter duration (2 minutes)
+    return cacheService.withCache(
+      this.CACHE_KEYS.ALL_REPOSITORIES,
+      () => apiClient.get<GitHubRepository[]>('/repositories/available'),
+      { duration: 2 * 60 * 1000 } // 2 minutes cache
+    );
   }
 
   async connectRepositories(repositories: Array<{ owner: string; name: string }>): Promise<SyncResponse> {
-    return apiClient.post<SyncResponse>('/repositories/connect', { repositories });
+    // Clear repositories cache when connecting new repositories
+    cacheService.clear('repositories');
+    
+    const result = await apiClient.post<SyncResponse>('/repositories/connect', { repositories });
+    
+    // Cache the new repositories data
+    if (result.repositories) {
+      cacheService.set(this.CACHE_KEYS.REPOSITORIES, result.repositories);
+    }
+    
+    return result;
   }
 
   async getRepository(owner: string, repo: string): Promise<GitHubRepository> {
